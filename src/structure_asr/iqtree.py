@@ -20,7 +20,8 @@ from pathlib import Path
 from forward_asr_benchmark.io import read_fasta
 
 ASR_OUTPUT_SUFFIXES = (".state", ".treefile", ".iqtree", ".log")
-DEFAULT_3DI_MODEL_NAME = "Q3Di_AF"
+# IQ-TREE upper-cases -mset names before lookup, so definitions must be upper case.
+DEFAULT_3DI_MODEL_NAME = "Q3DI_AF"
 
 
 def sha256(path: Path) -> str:
@@ -50,6 +51,8 @@ def write_topology(tree, path: Path) -> Path:
 
 def write_matrix_definition(matrix: Path, path: Path, name: str = DEFAULT_3DI_MODEL_NAME) -> Path:
     """Wrap a PAML-format 20-state matrix file as an IQ-TREE ``-mdef`` model."""
+    if name != name.upper():
+        raise ValueError("IQ-TREE -mset upper-cases model names; use an upper-case name")
     values = matrix.read_text(encoding="utf-8").split()
     expected = 190 + 20
     if len(values) != expected:

@@ -32,9 +32,23 @@ loading ESM2/ProstT5 and without running IQ-TREE.
     one process. Plan counts equal `exact_planned_attempts` and the cap is enforced.
   - The ASR stage, run with an IQ-TREE stub, succeeds with every truth file
     deleted. It skips finished jobs and refuses outputs made from changed inputs.
-  - The opt-in real-IQ-TREE test runs only when `ASR_IQTREE` is set.
+  - The opt-in real-IQ-TREE test runs only when `ASR_IQTREE` is set. It passes
+    with IQ-TREE 3.1.4 (official macOS arm64 release, sha256-verified).
 - `asr-grid plan grids/example.toml` reproduces the historical μ=1 (4,777) and
   documented μ=5 (23,896) call counts.
+- Real local IQ-TREE 3.1.4 run (`reconstruct` + `evaluate-dir`) on the bundled
+  μ=1 τ=1.5/2 tips, using the reference topology and Q.3Di.AF for 3Di.
+  - All 37 nodes matched in each condition and modality.
+  - AA: ModelFinder chose PMB+R3 (τ=1.5) and PMB+G4 (τ=2). MAP accuracy was
+    97.9047% for both, with mean p(truth) .97261 and .97095, equal to the
+    historical values at the printed precision.
+  - 3Di: ModelFinder chose Q3DI_AF+I+G4 and Q3DI_AF+R4. MAP accuracy was 88.70%
+    and 79.60%, with mean p(truth) .88409 and .78786.
+  - Per-site MAP states agree with the historical `.state` files at 100% for
+    AA (both τ) and 3Di τ=1.5, and at 99.04% for 3Di τ=2.
+  - This is consistent with, but does not prove, the historical runs having
+    used ModelFinder for AA and Q.3Di.AF for 3Di. Outputs are in
+    `results/iqtree_local/`. Runtime was about 1 minute per condition on 4 threads.
 
 These checks do not establish GPU performance, new model compatibility, sampler
 convergence, improved AA recovery or a completed new-data ASR benchmark.

@@ -18,4 +18,4 @@ iqtree = "iqtree3"              # or set ASR_IQTREE / pass --iqtree
 threads_per_job = 1
 aa_model = "MFP"                # ModelFinder, BIC
 three_di_matrix = "../.cache/models/3di/Q.3Di.AF"   # scripts/fetch_3di_matrix.sh
-three_di_model_name = "Q3Di_AF"
+three_di_model_name = "Q3DI_AF"

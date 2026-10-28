@@ -231,7 +231,7 @@ with open(prefix + ".state", "w") as h:
     for node in sorted(set(re.findall(r"Node\d+", topology))):
         for site in range(1, length + 1):
             h.write("%s\t%d\tA\t" % (node, site) + "\t".join("1.00000" if c == "A" else "0.00000" for c in cols) + "\n")
-model = "Q3Di_AF+G4" if "-mdef" in opt else "LG+G4"
+model = "Q3DI_AF+G4" if "-mdef" in opt else "LG+G4"
 open(prefix + ".iqtree", "w").write("Best-fit model according to BIC: %s\n" % model)
 open(prefix + ".log", "w").write(json.dumps(args))
 '''
@@ -289,8 +289,8 @@ class IqtreeStageTests(unittest.TestCase):
             self.assertEqual(aa_command[aa_command.index("-m") + 1], "MFP")
             self.assertNotIn("-blfix", aa_command)
             three_di_command = by_modality["3di"]["command"]
-            self.assertEqual(three_di_command[three_di_command.index("-mset") + 1], "Q3Di_AF")
-            self.assertEqual(by_modality["3di"]["best_fit_model"], "Q3Di_AF+G4")
+            self.assertEqual(three_di_command[three_di_command.index("-mset") + 1], "Q3DI_AF")
+            self.assertEqual(by_modality["3di"]["best_fit_model"], "Q3DI_AF+G4")
             for path, content in hidden.items():
                 path.write_bytes(content)
             # Rerun skips finished jobs; IQ-TREE outputs are not rewritten.

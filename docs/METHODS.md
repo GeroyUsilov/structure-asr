@@ -177,7 +177,7 @@ update attempts, not substitutions, so they are not supplied. `--ancestral`
 writes empirical-Bayes marginals.
 
 - AA: `-st AA -m MFP` (ModelFinder, BIC).
-- 3Di: states encoded as pseudo-amino-acids, `-st AA -m MFP -mdef <Q.3Di.AF> -mset Q3Di_AF`.
+- 3Di: states encoded as pseudo-amino-acids, `-st AA -m MFP -mdef <Q.3Di.AF> -mset Q3DI_AF`.
   The exchangeabilities are fixed to the published Q.3Di.AF matrix (Garg &
   Hochberg 2025, MBE 42:msaf124; CC0, doi:10.17617/3.1MJJBH). ModelFinder
   chooses only the frequency and rate-heterogeneity components.
