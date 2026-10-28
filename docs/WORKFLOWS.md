@@ -1,0 +1,143 @@
+# Running and extending the workflows
+
+Run commands from the repository root after the README installation. Outputs
+below are ignored by Git. Set `HF_HOME` to persistent RunPod storage if desired;
+reuse a known-good cached model through `--model /path/to/snapshot` rather than
+downloading duplicate weights. Do not run GPU steps on the local machine.
+
+## Forward evolution
+
+```bash
+bash scripts/forward_ef_tu.sh --outdir results/mu123_tau1p5 \
+  --rates 1 2 3 --proposal-temperature 1.5 --plan-only
+```
+
+Remove `--plan-only` to execute. For τ=2 use a different output directory.
+`--seed` defaults to 731024, shared across rates; model defaults to ESM2-650M.
+`--max-attempts-per-run` defaults to 100000. The plan refuses larger jobs
+unless that cap is raised deliberately. Rates 5/10/20 require respectively
+23896/47802/95614 calls for this tree and seed. At the previously measured
+.04 s/call, the six proposed rate/temperature conditions imply about 3.72 hours
+of forward passes alone; this is an estimate, not a new GPU measurement.
+
+Per-rate outputs:
+
+```text
+results/<sweep>/
+  root_sequence.fasta, sweep_plan.json, sweep_summary.json
+  mu_1/
+    config.toml, checkpoint.json, model_pass_timings.tsv
+    simulation/
+      ground_truth_nodes.fasta, leaves.fasta, tree.nwk
+      events.tsv, node_scores.tsv, manifest.json
+```
+
+Rerun the same command to resume completed branches. Do not change the model,
+seed, rate or temperature in an existing result directory. See `VALIDATION.md`
+for inherited interruption edge cases.
+
+## AA→3Di conversion (GPU)
+
+Tip conversion reuses the working full ProstT5 path:
+
+```bash
+python -m structure_asr.prostt5 --results-dir results/mu123_tau1p5 \
+  --rates 1 2 3 --output-archive results/mu123_tau1p5_3di.tar.gz --resume
+```
+
+For the historical μ=1 all-node truth cases:
+
+```bash
+python -m runpod_exact_mlm_ef_tu_sweep.convert_ground_truth_nodes_to_3di \
+  --condition-input mu1_tau1p5=examples/ef_tu/mu1_tau1p5/truth_aa.fasta \
+  --condition-input mu1_tau2=examples/ef_tu/mu1_tau2/truth_aa.fasta \
+  --outdir results/truth_3di --resume
+```
+
+Those encodings are already bundled. Re-running conversion is only necessary
+for new sequences or an explicit reproducibility study. The all-node CLI is
+historically restricted to μ=1 condition names, 77 nodes and length 396.
+Generalizing it is pending; its restriction should not be silently bypassed.
+
+## ASR posterior inputs
+
+Sampling consumes IQ-TREE-style `.state` tables: tab-separated `Node`, `Site`,
+`State`, and 20 `p_<symbol>` columns. Each node needs consecutive 1-based sites.
+AA and 3Di alignments must refer to the same positions. Tree files are needed
+for benchmarking mappings; do not join independently reconstructed nodes by
+number without verifying their topology.
+
+The repository does not currently run IQ-TREE. Supplied historical trees and
+posteriors are inputs, not evidence of a reproducible IQ-TREE command or model
+selection configuration. Add a documented inference stage before calling this
+an end-to-end new-data benchmark.
+
+## Current uncertainty-weighted sampling
+
+```bash
+bash scripts/sample_node34.sh 0.01 --validate-only
+bash scripts/sample_node34.sh 0.01
+```
+
+Use .01/.02/.05/.1 on separate RunPod machines for the requested independent
+1000-step, one-chain experiments. Each job uses the same seed/start by default
+and changes only the structural weight. Results contain the starting AA and
+predicted 3Di, best/final sequences, per-step scores, acceptance/proposal values,
+site weights, checkpoint and manifest. Model-score selection happens inside
+sampling; ground-truth evaluation is a subsequent operation.
+
+For other nodes/chain counts, use `python -m structure_asr.sampling --help`.
+Use `--nodes-file examples/ef_tu/representative_nodes.txt` for Node1/29/34.
+
+## Historical sampler reproduction
+
+```bash
+python -m structure_asr.legacy_sampling \
+  --aa-state examples/ef_tu/mu1_tau2/aa.state \
+  --three-di-state examples/ef_tu/mu1_tau2/3di.state \
+  --nodes-file examples/ef_tu/representative_nodes.txt \
+  --condition mu1_tau2 --outdir results/legacy_mu1_tau2 \
+  --alpha 0.5 --mcmc-temperature 2 --n-iter 3000 \
+  --chains-per-node 1 --acceptance-mode legacy --resume
+```
+
+Use this only to reproduce the historical algorithm. The default modern entry
+point `asr-sample` uses the uncertainty-weighted Hastings implementation.
+Neither command evaluates truth. The curated checkout contains truth files;
+omit them when constructing a physically blinded inference-only bundle.
+
+## CPU result replay and figures
+
+```bash
+bash scripts/reproduce_examples.sh
+```
+
+Individual commands:
+
+```bash
+python -m structure_asr.benchmark_examples
+python -m structure_asr.score_placement --example-root examples/ef_tu \
+  --mapping results/reproduced/node_mapping.tsv --outdir results/score_placement
+python -m structure_asr.example_distances
+python examples/glugln/plot_glugln_model_entropies.py
+python examples/glugln/plot_glugln_sequence_logos.py
+```
+
+The seven-rate τ=1 tip files are retained separately in
+`examples/ef_tu/rate_sweep_tau1`; historical general Hamming analysis entry
+points are `runpod_exact_mlm_ef_tu_sweep.analyze_aa_hamming` and
+`runpod_exact_mlm_ef_tu_sweep.analyze_3di_hamming` (see their `--help`).
+
+## Other sampling processes retained
+
+- `examples/glugln/run_corrected_glugln.py`: draw independent AA posterior
+  sequences, encode them, compare empirical 3Di frequencies with direct 3Di
+  marginals. Run `--validate-only` locally; GPU execution on RunPod.
+- `legacy/runpod_3di_to_aa_sampling_v3/`: preserved reverse `<fold2AA>` workflow,
+  fixed 3Di marginal-MAP translated to stochastic AA samples with sequence-level
+  rejection of invalid tokens. Its original README explains sampling settings
+  and resume/import behavior. This is not joint phylogenetic MH.
+- `legacy/protein_mcmc_utils.py`, `legacy/greedy_utils.py`: original candidate
+  scoring, forward-chain, mutational scan and greedy-selection helpers.
+- `runpod_paper_tree_ofs` plus core DCA/AlphaFold scorers: experimental historical
+  options retained for reference, not active EF-Tu result provenance.

@@ -12,8 +12,8 @@ from matplotlib.patches import PathPatch
 from matplotlib.transforms import Affine2D
 
 BASE = Path(__file__).resolve().parent
-SOURCE = Path('/Users/christopher/Desktop/aleks_claude/runpod_glugln_aa168_3di16_uncertainty/inputs')
-OUT = BASE / 'glugln_sequence_logos'
+SOURCE = BASE / 'inputs'
+OUT = BASE.parents[1] / 'results' / 'glugln_sequence_logos'
 FONT = '/System/Library/Fonts/Supplemental/Courier New Bold.ttf'
 SEED = 42
 
@@ -32,7 +32,8 @@ def read(name, node):
 
 
 def logo(ax, alphabet, p, sites, color, label, lowercase=False):
-    font=FontProperties(fname=FONT)
+    font=(FontProperties(fname=FONT) if Path(FONT).exists()
+          else FontProperties(family='DejaVu Sans Mono', weight='bold'))
     paths={s:TextPath((0,0),s.lower() if lowercase else s,size=1,prop=font) for s in alphabet}
     # A common width scale retains the monospace glyph proportions in x.
     common_width=max(path.get_extents().width for path in paths.values())
@@ -71,13 +72,14 @@ def main():
     window_entropy=np.array([entropy[s-1:s+9].mean() for s in starts])
     start=int(starts[np.argmax(window_entropy)])
     sites=np.arange(start,start+10)
-    plt.rcParams.update({'font.family':'Gill Sans',
+    gill = Path('/System/Library/Fonts/Supplemental/GillSans.ttc')
+    plt.rcParams.update({'font.family':'Gill Sans' if gill.exists() else 'DejaVu Sans',
         'font.size':12,'axes.labelsize':12,'xtick.labelsize':12,'ytick.labelsize':12,
         'pdf.fonttype':42,'svg.fonttype':'none'})
     from matplotlib import font_manager
-    font_manager.fontManager.addfont(FONT)
-    font_manager.fontManager.addfont('/System/Library/Fonts/Supplemental/GillSans.ttc')
-    font_manager.fontManager.addfont('/System/Library/Fonts/Supplemental/Courier New.ttf')
+    for font_path in (Path(FONT), gill):
+        if font_path.exists():
+            font_manager.fontManager.addfont(str(font_path))
     fig,axes=plt.subplots(2,1,figsize=(9,5),sharex=True)
     fig.subplots_adjust(left=.115,right=.975,top=.9,bottom=.19,hspace=.52)
     logo(axes[0],aa_alphabet,aa,sites,'#2463A6','AA model')
@@ -85,7 +87,7 @@ def main():
     axes[0].tick_params(labelbottom=True)
     axes[1].set_xlabel('Alignment position',labelpad=9)
     fig.text(.115,.035,'Highest mean 3Di entropy among 10-site windows in the middle third.',fontsize=12)
-    OUT.mkdir(exist_ok=True)
+    OUT.mkdir(parents=True, exist_ok=True)
     for ext in ['png','pdf','svg']:
         fig.savefig(OUT/f'glugln_aa_3di_probability_logos.{ext}',dpi=300,facecolor='white')
     plt.close(fig)
@@ -93,8 +95,10 @@ def main():
               'selection':'maximum mean direct 3Di entropy; 10 consecutive sites; earliest start breaks ties',
               'mean_3di_entropy_bits':float(entropy[sites-1].mean()),
               'aa_node':'Node168','3di_node':'Node16','height':'normalized posterior probability',
-              'label_font':'Gill Sans','label_size_pt':12,'3di_display_case':'lowercase',
-              'glyph_font':FONT,'aa_probabilities':aa[sites-1].tolist(),
+              'label_font':'Gill Sans' if gill.exists() else 'DejaVu Sans',
+              'label_size_pt':12,'3di_display_case':'lowercase',
+              'glyph_font':FONT if Path(FONT).exists() else 'DejaVu Sans Mono',
+              'aa_probabilities':aa[sites-1].tolist(),
               'aa_alphabet':aa_alphabet,'3di_probabilities':di[sites-1].tolist(),'3di_alphabet':di_alphabet}
     (OUT/'logo_data.json').write_text(json.dumps(metadata,indent=2)+'\n')
     print('Positions:',', '.join(map(str,sites)))

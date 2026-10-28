@@ -218,15 +218,23 @@ def draw_histogram(ax, samples, truth, title, percentile, color):
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--state-dir", type=Path, required=True)
-    parser.add_argument("--aa-truth-dir", type=Path, required=True)
-    parser.add_argument("--three-di-truth-dir", type=Path, required=True)
+    parser.add_argument("--example-root", type=Path,
+                        help="Curated examples/ef_tu directory; replaces the three legacy directories")
+    parser.add_argument("--state-dir", type=Path)
+    parser.add_argument("--aa-truth-dir", type=Path)
+    parser.add_argument("--three-di-truth-dir", type=Path)
     parser.add_argument("--mapping", type=Path, required=True)
     parser.add_argument("--outdir", type=Path, required=True)
     parser.add_argument("--samples", type=int, default=5000)
     parser.add_argument("--seed", type=int, default=731024)
     parser.add_argument("--probability-floor", type=float, default=5e-6)
     args = parser.parse_args()
+    if args.example_root is None and any(path is None for path in (
+        args.state_dir, args.aa_truth_dir, args.three_di_truth_dir
+    )):
+        parser.error("provide --example-root or all three legacy input directories")
+    if args.samples < 1 or not 0 < args.probability_floor < 1:
+        parser.error("positive sample count and probability floor in (0,1) required")
     args.outdir.mkdir(parents=True, exist_ok=True)
 
     rng = np.random.default_rng(args.seed)
@@ -241,9 +249,16 @@ def main() -> None:
         for modality in MODALITIES:
             truth_name = info["aa_truth"] if modality == "aa" else info["three_di_truth"]
             truth_dir = args.aa_truth_dir if modality == "aa" else args.three_di_truth_dir
+            if args.example_root is not None:
+                truth_dir = args.example_root / condition
+                truth_name = f"truth_{modality}.fasta"
             truth_records = read_fasta(truth_dir / truth_name)
             mapping = read_mapping(args.mapping, condition, modality)
-            state_path = args.state_dir / f"ef_tu_tips_{condition}_{modality}.fasta.state"
+            state_path = (
+                args.example_root / condition / f"{modality}.state"
+                if args.example_root is not None else
+                args.state_dir / f"ef_tu_tips_{condition}_{modality}.fasta.state"
+            )
             alphabet, state_nodes = read_state(state_path)
 
             dataset_samples = np.zeros(args.samples, dtype=np.float64)

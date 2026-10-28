@@ -1,0 +1,85 @@
+# Handoff for a fresh agent
+
+## Project question
+
+Can inferred ancestral structural information help resolve ambiguous ancestral
+amino acids? We reconstruct AA and 3Di sitewise marginals separately, then score
+candidate AA sequences by AA support and the support of their ProstT5-predicted
+3Di encoding. The scientific endpoint is AA recovery, not simply higher scores
+or better 3Di identity.
+
+The longer-term application is ancestral tRNA synthetases, including ancient
+Glu/Gln relationships. Synthetic EF-Tu is the controlled benchmark with known
+ancestral sequences.
+
+## Where to start
+
+1. Read `METHODS.md` for exact kernels and conventions.
+2. Run the 27-test CPU suite from the README.
+3. Run `bash scripts/reproduce_examples.sh`. It regenerates historical
+   benchmark tables, score histograms, tip-distance ECDFs, Glu/Gln entropy plots
+   and logos. All inputs are in this repository; no Desktop paths are needed.
+4. Inspect `EXPERIMENTS.md` and the stored `run_manifest.json` files before
+   making claims about a run or changing its parameters.
+
+## Current scientific state
+
+- EF-Tu generation used exact masked-site ESM2, **not OFS**, despite the early
+  conversation and experimental OFS modules. It did not use ESMFold.
+- Same fixed 39-tip topology, 396-AA root; rates scale update counts, not
+  realized substitutions or an explicit continuous-time evolutionary rate.
+- μ=1, τ=1.5/2 AA-MAP reconstruction was already about 97.90% accurate.
+- The initial six representative joint reconstructions used the **legacy**
+  acceptance rule and equal score weights. Their total AA errors rose 68→75.
+- The later sampler uses AA-uncertainty site proposals, non-self residue
+  proposals and the correct Hastings term. Do not attribute its statistical
+  properties to the historical equal-weight runs.
+- Ground-truth 3Di log scores are far below typical posterior-sample scores.
+  This exposes a discrepancy, not a diagnosis of its cause.
+- The user-supplied later Node34 candidate had 10 AA and 37 3Di errors versus
+  7 and 81 at AA-MAP. Its complete inference provenance was not imported;
+  treat it separately from the six reproducible legacy outputs.
+
+## Most recent unfinished request (before this refactor)
+
+Prepare a RunPod/Jupyter overnight workflow that:
+
+1. Generates more divergent synthetic data.
+2. Runs AA and 3Di ASR using tips only.
+3. Benchmarks ancestors against ground truth after inference finishes.
+
+Candidate schedule discussed: μ={5,10,20} × τ={1.5,2}; it is a proposal,
+not a completed experiment. Greater divergence need not make AA ASR worse in
+every case. Do not adapt simulation parameters to individual truth outcomes
+and then present those same examples as a held-out evaluation.
+
+The old high-rate μ={20,40,60} run was intentionally stopped. Do not resume
+or count it as a completed benchmark without an explicit new request.
+
+Missing work for the overnight pipeline:
+
+- A stage orchestrator with stage-level resume and a single downloadable result.
+- IQ-TREE installation/version pin and explicit AA/3Di substitution-model choices.
+  Historical `.state`/`.treefile` inputs alone do not record the full ASR command.
+  A standard AA matrix is not automatically an appropriate 3Di model.
+- Generalized all-node 3Di conversion (the old CLI is limited to named μ=1 cases).
+- End-to-end real-GPU validation; no model inference was performed in this refactor.
+
+## User preferences and boundaries
+
+- Reuse the existing working ProstT5 code; avoid another bespoke loading path.
+- No local ESM2/ProstT5 downloads, no encoder retraining.
+- Frequent checkpoints and progress bars; RunPod data/caches on persistent storage.
+- Preserve seeds, internal nodes, tip identifiers, exact settings and topology.
+- Evaluation after inference. The latest request authorizes automatic final
+  benchmarking, not truth-guided proposals or candidate selection.
+- Keep the engineering practical: one clear entry point per task, no redundant
+  bundles or framework layers. Document unresolved limitations plainly.
+
+## Repository history and scope
+
+The Desktop originals were unversioned. A curated baseline was committed to
+`main`; active work is on `refactor/documented-handoff`. `PROVENANCE.md` maps the
+imported artifacts to originals. No remote was configured or published.
+Old modules remain as compatibility shims or labeled experimental references.
+All simulation math, RNG ordering and model-generation settings were retained.

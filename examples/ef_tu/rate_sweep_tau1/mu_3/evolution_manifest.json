@@ -1,0 +1,48 @@
+{
+  "config": {
+    "exact_mlm": {
+      "factory": "runpod_exact_mlm_smoke.esm2_adapter:make_site_predictor",
+      "parameters": {
+        "device": "cuda",
+        "dtype": "float16",
+        "model_name": "facebook/esm2_t33_650M_UR50D",
+        "progress_description": "mu=3 ESM2",
+        "progress_total": 14338,
+        "resume_timings": true,
+        "timings_path": "/workspace/ef_tu_exact_mlm_sweep/results/mu_3/model_pass_timings.tsv"
+      }
+    },
+    "scorers": [
+      {
+        "kind": "constant",
+        "weight": 1.0
+      }
+    ],
+    "simulation": {
+      "alphabet": "ACDEFGHIKLMNPQRSTVWY",
+      "checkpoint_every_branches": 1,
+      "checkpoint_path": "/workspace/ef_tu_exact_mlm_sweep/results/mu_3/checkpoint.json",
+      "kernel": "exact_mlm_gibbs",
+      "mutation_scale": 3.0,
+      "output_dir": "/workspace/ef_tu_exact_mlm_sweep/results/mu_3/simulation",
+      "proposal": "exact_mlm",
+      "proposal_temperature": 1.0,
+      "root_fasta": "/workspace/ef_tu_exact_mlm_sweep/results/root_sequence.fasta",
+      "seed": 731024,
+      "temperature": 1.0,
+      "tree": "/workspace/forward_asr_benchmark/reference_data/ef_tu_uiuc/extracted/AB_eftu_rerooted.tre"
+    }
+  },
+  "created_utc": "2026-08-26T09:09:23.643385+00:00",
+  "event_count": 14338,
+  "node_count": 77,
+  "outputs": {
+    "events": "events.tsv",
+    "ground_truth": "ground_truth_nodes.fasta",
+    "leaves": "leaves.fasta",
+    "node_scores": "node_scores.tsv",
+    "tree": "tree.nwk"
+  },
+  "schema_version": 1,
+  "source_config": "/workspace/ef_tu_exact_mlm_sweep/results/mu_3/config.toml"
+}

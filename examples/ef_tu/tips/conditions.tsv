@@ -1,0 +1,10 @@
+condition	mu	tau	tips	aa_length	three_di_length	aa_fasta	three_di_fasta	tree	source
+mu1_tau1	1	1	39	396	396	aa/ef_tu_tips_mu1_tau1_aa.fasta	3di/ef_tu_tips_mu1_tau1_3di.fasta	ef_tu_tree.nwk	/Users/christopher/Desktop/aleks_claude/ef_tu_3di_download/ef_tu_3di_outputs/mu_1
+mu1_tau1p5	1	1.5	39	396	396	aa/ef_tu_tips_mu1_tau1p5_aa.fasta	3di/ef_tu_tips_mu1_tau1p5_3di.fasta	ef_tu_tree.nwk	/Users/christopher/Desktop/aleks_claude/ef_tu_mu123_temperature_sweep_outputs.tar.gz:tau_1p5/results/mu_1
+mu1_tau2	1	2	39	396	396	aa/ef_tu_tips_mu1_tau2_aa.fasta	3di/ef_tu_tips_mu1_tau2_3di.fasta	ef_tu_tree.nwk	/Users/christopher/Desktop/aleks_claude/ef_tu_mu123_temperature_sweep_outputs.tar.gz:tau_2/results/mu_1
+mu2_tau1	2	1	39	396	396	aa/ef_tu_tips_mu2_tau1_aa.fasta	3di/ef_tu_tips_mu2_tau1_3di.fasta	ef_tu_tree.nwk	/Users/christopher/Desktop/aleks_claude/ef_tu_3di_download/ef_tu_3di_outputs/mu_2
+mu2_tau1p5	2	1.5	39	396	396	aa/ef_tu_tips_mu2_tau1p5_aa.fasta	3di/ef_tu_tips_mu2_tau1p5_3di.fasta	ef_tu_tree.nwk	/Users/christopher/Desktop/aleks_claude/ef_tu_mu123_temperature_sweep_outputs.tar.gz:tau_1p5/results/mu_2
+mu2_tau2	2	2	39	396	396	aa/ef_tu_tips_mu2_tau2_aa.fasta	3di/ef_tu_tips_mu2_tau2_3di.fasta	ef_tu_tree.nwk	/Users/christopher/Desktop/aleks_claude/ef_tu_mu123_temperature_sweep_outputs.tar.gz:tau_2/results/mu_2
+mu3_tau1	3	1	39	396	396	aa/ef_tu_tips_mu3_tau1_aa.fasta	3di/ef_tu_tips_mu3_tau1_3di.fasta	ef_tu_tree.nwk	/Users/christopher/Desktop/aleks_claude/ef_tu_3di_download/ef_tu_3di_outputs/mu_3
+mu3_tau1p5	3	1.5	39	396	396	aa/ef_tu_tips_mu3_tau1p5_aa.fasta	3di/ef_tu_tips_mu3_tau1p5_3di.fasta	ef_tu_tree.nwk	/Users/christopher/Desktop/aleks_claude/ef_tu_mu123_temperature_sweep_outputs.tar.gz:tau_1p5/results/mu_3
+mu3_tau2	3	2	39	396	396	aa/ef_tu_tips_mu3_tau2_aa.fasta	3di/ef_tu_tips_mu3_tau2_3di.fasta	ef_tu_tree.nwk	/Users/christopher/Desktop/aleks_claude/ef_tu_mu123_temperature_sweep_outputs.tar.gz:tau_2/results/mu_3

@@ -1,0 +1,14 @@
+{
+  "aa_fasta_sha256": "c23a35b75cd2404ec496c54aea59c1d7d7842f72c55749e01d9636d73414b835",
+  "created_utc": "2026-08-26T09:48:17.248311+00:00",
+  "do_sample": false,
+  "implementation": "adapted from aleks_claude/protein_mcmc_utils.py and phylo_3di_workflow",
+  "method": "deterministic greedy <AA2fold> generation",
+  "model": "Rostlab/ProstT5",
+  "mutation_scale": 1.0,
+  "num_beams": 1,
+  "resolved_model_path": "/workspace/ef_tu_exact_mlm_sweep/huggingface_cache/hub/models--Rostlab--ProstT5/snapshots/d7d097d5bf9a993ab8f68488b4681d6ca70db9e5",
+  "sequence_length": 396,
+  "three_di_fasta_sha256": "7e0faecce981799467971210c5ab5fbdf71b25807b9db2b04e3b612b2383d637",
+  "tip_count": 39
+}

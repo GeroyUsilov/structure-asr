@@ -3,18 +3,31 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "forward-asr-benchmark"
-version = "0.1.0"
-description = "Ground-truth forward protein evolution for ancestral-sequence-reconstruction benchmarks"
+name = "structure-asr"
+version = "0.2.0"
+description = "Forward protein evolution, structure-guided ancestral sampling, and reproducible benchmarks"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
   "biopython>=1.81",
   "numpy>=1.24",
+  "tqdm>=4.66",
 ]
+
+[project.optional-dependencies]
+analysis = ["matplotlib>=3.7", "pandas>=2"]
+test = ["matplotlib>=3.7", "pandas>=2"]
 
 [project.scripts]
 forward-asr = "forward_asr_benchmark.cli:main"
+asr-evolve = "structure_asr.forward:main"
+asr-sample = "structure_asr.sampling:main"
+asr-sample-legacy = "structure_asr.legacy_sampling:main"
+asr-encode = "structure_asr.prostt5:main"
+asr-examples = "structure_asr.benchmark_examples:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+runpod_exact_mlm_smoke = ["*.fasta", "*.nwk"]

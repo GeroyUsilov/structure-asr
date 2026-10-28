@@ -32,8 +32,8 @@ REQUIRED_COLUMNS = {"Node", "Site", "State"}
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input-dir", type=Path, default=Path("inputs"))
-    parser.add_argument("--outdir", type=Path, default=Path("results"))
+    parser.add_argument("--input-dir", type=Path, default=Path(__file__).resolve().parent / "inputs")
+    parser.add_argument("--outdir", type=Path, default=Path("results/glugln_uncertainty"))
     parser.add_argument("--n-samples", type=int, default=1000)
     parser.add_argument("--batch-size", type=int, default=20)
     parser.add_argument("--seed", type=int, default=42)

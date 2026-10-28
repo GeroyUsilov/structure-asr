@@ -1,0 +1,4 @@
+inferred_node	ground_truth_node	depth_class	edges_from_root	patristic_depth	descendant_tips
+Node1	Internal_0001	shallow	1	0.832195	22
+Node29	Internal_0029	intermediate	5	1.150041	10
+Node34	Internal_0034	deep	10	1.504682	4

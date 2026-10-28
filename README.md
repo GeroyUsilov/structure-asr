@@ -1,5 +1,93 @@
 # Structure-informed ancestral sequence reconstruction
 
-Curated import of the EF-Tu forward-evolution benchmark, joint AA/3Di
-samplers, and Glu/Gln examples from the local `aleks_claude` project.
-This baseline preserves source code before the documented-handoff refactor.
+Forward protein evolution with saved ground truth, AA/3Di ancestral-sequence
+sampling, and reproducible examples from the EF-Tu and Glu/Gln project.
+
+**New agent: read [HANDOFF](docs/HANDOFF.md) first.**
+
+## Start locally — no GPU or model download
+
+Python 3.11+ is required (`tomllib` is used). From this repository:
+
+```bash
+python -m pip install -e '.[analysis]'
+python -m unittest discover -s tests -v
+bash scripts/reproduce_examples.sh
+```
+
+The replay writes tables/figures under `results/` using bundled sequences,
+posteriors, and completed-chain checkpoints. It does not generate new proteins.
+To run without installing this checkout, set `PYTHONPATH=src` and use an
+environment with NumPy, Biopython, tqdm, pandas and matplotlib installed.
+
+## Contents
+
+| Location | Purpose |
+|---|---|
+| `src/forward_asr_benchmark/` | Tree traversal, mutation kernels, checkpoints, FASTA output |
+| `src/structure_asr/forward.py`, `esm2.py` | EF-Tu sweeps; exact masked-site ESM2 generator |
+| `src/structure_asr/prostt5.py` | Shared working deterministic AA→3Di conversion |
+| `src/structure_asr/posteriors.py` | Shared posterior parsing and sequence scores |
+| `src/structure_asr/sampling.py` | Uncertainty-weighted Metropolis–Hastings sampler |
+| `src/structure_asr/legacy_sampling.py` | Historical equal-weight sampler; separately named |
+| `src/structure_asr/evaluation.py`, `score_placement.py` | Topology matching, truth scores and score distributions |
+| `examples/ef_tu/` | Tree, root-source alignment, nine tip datasets, two completed ASR cases |
+| `examples/glugln/` | Corrected AA Node168 / 3Di Node16 inputs, entropy and logo examples |
+| `docs/figures/` | Selected historical result figures |
+| `legacy/`, `docs/archive/` | Earlier implementations/instructions, retained as references |
+
+The `src/runpod_*` packages retain old import paths, analysis tools and
+experimental OFS code. Active implementations have the clearer names above.
+
+## RunPod workflows
+
+Use a CUDA PyTorch environment. Install dependencies there, not on the local
+machine for inference:
+
+```bash
+python -m pip install -r requirements-gpu.txt
+python -m pip install -e '.[analysis]'
+```
+
+Plan a higher-divergence forward run without loading ESM2:
+
+```bash
+bash scripts/forward_ef_tu.sh --outdir results/high_mu_tau2 \
+  --rates 5 10 20 --proposal-temperature 2 --plan-only
+```
+
+Remove `--plan-only` to simulate on the GPU. Use a different output directory
+for each temperature/seed. Existing generated configurations and compatibility
+factory paths remain supported.
+
+Run one 1,000-step Node34 chain with weak structural guidance:
+
+```bash
+bash scripts/sample_node34.sh 0.02 --validate-only
+bash scripts/sample_node34.sh 0.02
+```
+
+The same command accepts `0.01`, `0.05`, or `0.1`; each weight has its own output
+directory. This sampler reads posterior inputs, not ground-truth FASTAs.
+The full handoff repository contains truth for evaluation and is not a physically
+blinded job archive. See [workflows](docs/WORKFLOWS.md) for conversion, historical
+sampling and output conventions.
+
+## Results and current boundary
+
+The stored μ=1, τ∈{1.5,2} cases reproduce ~97.90% AA marginal-MAP accuracy.
+Across six representative historical reconstructions, AA errors changed from
+68 to 75 despite improved joint scores. Structural-score improvement is not
+equivalent to AA reconstruction improvement.
+
+The requested generation→new IQ-TREE ASR→benchmark overnight orchestrator is
+**not implemented**. This repository contains the working pieces and explicit
+next steps, not a claim that the unfinished pipeline has run.
+
+- [Scientific methods and caveats](docs/METHODS.md)
+- [Experiment inventory and findings](docs/EXPERIMENTS.md)
+- [Original-file provenance](docs/PROVENANCE.md)
+- [Validation and known limitations](docs/VALIDATION.md)
+
+Git: `main` is the curated import; `refactor/documented-handoff` is the cleanup.
+There is no configured remote. Source files on the Desktop were left unchanged.

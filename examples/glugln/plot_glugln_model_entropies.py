@@ -7,9 +7,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib import font_manager
 
-SOURCE = Path('/Users/christopher/Desktop/aleks_claude/runpod_glugln_aa168_3di16_uncertainty/inputs')
-REFERENCE = Path('/Users/christopher/Desktop/aleks_claude/results_glugln/GluGln_AA168_3Di16/site_uncertainty.tsv')
-OUTPUT = Path(__file__).resolve().parent / 'glugln_model_entropy_figures'
+BASE = Path(__file__).resolve().parent
+SOURCE = BASE / 'inputs'
+REFERENCE = BASE / 'site_uncertainty.tsv'
+OUTPUT = BASE.parents[1] / 'results' / 'glugln_model_entropy_figures'
 
 
 def read_entropy(name, node):
@@ -43,9 +44,11 @@ def main():
         reference = list(csv.DictReader(handle, delimiter='\t'))
     np.testing.assert_allclose(aa, [float(r['aa_entropy_bits']) for r in reference], atol=1e-12)
     np.testing.assert_allclose(di, [float(r['direct_3di_entropy_bits']) for r in reference], atol=1e-12)
-    OUTPUT.mkdir(exist_ok=True)
-    font_manager.fontManager.addfont('/System/Library/Fonts/Supplemental/GillSans.ttc')
-    plt.rcParams.update({'font.family': 'Gill Sans', 'font.size': 12,
+    OUTPUT.mkdir(parents=True, exist_ok=True)
+    gill = Path('/System/Library/Fonts/Supplemental/GillSans.ttc')
+    if gill.exists():
+        font_manager.fontManager.addfont(str(gill))
+    plt.rcParams.update({'font.family': 'Gill Sans' if gill.exists() else 'DejaVu Sans', 'font.size': 12,
                          'axes.labelsize': 12, 'xtick.labelsize': 12,
                          'ytick.labelsize': 12, 'legend.fontsize': 12,
                          'axes.spines.top': False, 'axes.spines.right': False,
