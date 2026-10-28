@@ -48,14 +48,15 @@ separately evaluated candidate, not proof of a completed four-weight sweep.
 No full later-chain result directory was imported; the six-case replay above
 does not silently include this candidate as another replicated run.
 
-## Prepared / interrupted / proposed
+## Historical presets and interrupted runs
 
 - Weak-structure Node34 sweep: λ=0,.005,.01,.02,.05; 3 chains ×3000 steps.
 - Four independent Node34 jobs: λ=.01,.02,.05,.1; 1 chain ×1000 steps.
   The current `sample_node34.sh` reproduces these parameter settings.
 - μ=20,40,60 simulation: stopped by the user; do not treat as completed.
-- Proposed harder overnight sweep μ=5,10,20 × τ=1.5,2: not run here.
-- End-to-end new-data generation→ASR→benchmark: pending implementation.
+
+These entries record provenance and available presets, not jobs to launch or
+resume in a new session.
 
 ## Figures
 

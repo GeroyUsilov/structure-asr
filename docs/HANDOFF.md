@@ -15,8 +15,9 @@ ancestral sequences.
 ## Where to start
 
 1. Read `METHODS.md` for exact kernels and conventions.
-2. Run the 27-test CPU suite from the README.
-3. Run `bash scripts/reproduce_examples.sh`. It regenerates historical
+2. Consult `WORKFLOWS.md` for RunPod setup, launch commands, checkpoints and outputs.
+3. For optional local validation, the README describes the 27-test CPU suite;
+   `bash scripts/reproduce_examples.sh` regenerates historical
    benchmark tables, score histograms, tip-distance ECDFs, Glu/Gln entropy plots
    and logos. All inputs are in this repository; no Desktop paths are needed.
 4. Inspect `EXPERIMENTS.md` and the stored `run_manifest.json` files before
@@ -40,30 +41,18 @@ ancestral sequences.
   7 and 81 at AA-MAP. Its complete inference provenance was not imported;
   treat it separately from the six reproducible legacy outputs.
 
-## Most recent unfinished request (before this refactor)
+## Starting a new session
 
-Prepare a RunPod/Jupyter overnight workflow that:
+This handoff provides project background, not an active task queue. Follow the
+user's new request; do not resume old simulations, implement previously discussed
+extensions, or launch validation/inference merely because they appear in the
+historical documentation. Workflow commands are available examples, not assignments.
 
-1. Generates more divergent synthetic data.
-2. Runs AA and 3Di ASR using tips only.
-3. Benchmarks ancestors against ground truth after inference finishes.
-
-Candidate schedule discussed: μ={5,10,20} × τ={1.5,2}; it is a proposal,
-not a completed experiment. Greater divergence need not make AA ASR worse in
-every case. Do not adapt simulation parameters to individual truth outcomes
-and then present those same examples as a held-out evaluation.
-
-The old high-rate μ={20,40,60} run was intentionally stopped. Do not resume
-or count it as a completed benchmark without an explicit new request.
-
-Missing work for the overnight pipeline:
-
-- A stage orchestrator with stage-level resume and a single downloadable result.
-- IQ-TREE installation/version pin and explicit AA/3Di substitution-model choices.
-  Historical `.state`/`.treefile` inputs alone do not record the full ASR command.
-  A standard AA matrix is not automatically an appropriate 3Di model.
-- Generalized all-node 3Di conversion (the old CLI is limited to named μ=1 cases).
-- End-to-end real-GPU validation; no model inference was performed in this refactor.
+RunPod source code, dependency files, launch scripts and usage instructions are
+included in this repository. `WORKFLOWS.md` is the entry point. Model weights
+are not bundled. The available workflows are separate stages; this checkout
+does not automatically infer new IQ-TREE posteriors. Existing posterior files
+are inputs. `VALIDATION.md` records the tested scope and known limitations.
 
 ## User preferences and boundaries
 
@@ -71,8 +60,8 @@ Missing work for the overnight pipeline:
 - No local ESM2/ProstT5 downloads, no encoder retraining.
 - Frequent checkpoints and progress bars; RunPod data/caches on persistent storage.
 - Preserve seeds, internal nodes, tip identifiers, exact settings and topology.
-- Evaluation after inference. The latest request authorizes automatic final
-  benchmarking, not truth-guided proposals or candidate selection.
+- Keep ground-truth evaluation separate from inference and model-based candidate
+  selection. Do not use truth to guide proposals or tune on the evaluation cases.
 - Keep the engineering practical: one clear entry point per task, no redundant
   bundles or framework layers. Document unresolved limitations plainly.
 

@@ -17,8 +17,8 @@ Remove `--plan-only` to execute. For τ=2 use a different output directory.
 `--max-attempts-per-run` defaults to 100000. The plan refuses larger jobs
 unless that cap is raised deliberately. Rates 5/10/20 require respectively
 23896/47802/95614 calls for this tree and seed. At the previously measured
-.04 s/call, the six proposed rate/temperature conditions imply about 3.72 hours
-of forward passes alone; this is an estimate, not a new GPU measurement.
+.04 s/call, those three rates at one temperature imply about 1.86 hours
+of forward passes alone; this is a sizing example, not a queued run or a new GPU measurement.
 
 Per-rate outputs:
 
@@ -57,7 +57,7 @@ python -m runpod_exact_mlm_ef_tu_sweep.convert_ground_truth_nodes_to_3di \
 Those encodings are already bundled. Re-running conversion is only necessary
 for new sequences or an explicit reproducibility study. The all-node CLI is
 historically restricted to μ=1 condition names, 77 nodes and length 396.
-Generalizing it is pending; its restriction should not be silently bypassed.
+Its restriction should not be silently bypassed.
 
 ## ASR posterior inputs
 
@@ -79,7 +79,7 @@ bash scripts/sample_node34.sh 0.01 --validate-only
 bash scripts/sample_node34.sh 0.01
 ```
 
-Use .01/.02/.05/.1 on separate RunPod machines for the requested independent
+Use .01/.02/.05/.1 on separate RunPod machines to reproduce the historical independent
 1000-step, one-chain experiments. Each job uses the same seed/start by default
 and changes only the structural weight. Results contain the starting AA and
 predicted 3Di, best/final sequences, per-step scores, acceptance/proposal values,

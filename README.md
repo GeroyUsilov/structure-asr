@@ -49,11 +49,11 @@ python -m pip install -r requirements-gpu.txt
 python -m pip install -e '.[analysis]'
 ```
 
-Plan a higher-divergence forward run without loading ESM2:
+Preview a forward run without loading ESM2:
 
 ```bash
-bash scripts/forward_ef_tu.sh --outdir results/high_mu_tau2 \
-  --rates 5 10 20 --proposal-temperature 2 --plan-only
+bash scripts/forward_ef_tu.sh --outdir results/mu123_tau2 \
+  --rates 1 2 3 --proposal-temperature 2 --plan-only
 ```
 
 Remove `--plan-only` to simulate on the GPU. Use a different output directory
@@ -80,9 +80,9 @@ Across six representative historical reconstructions, AA errors changed from
 68 to 75 despite improved joint scores. Structural-score improvement is not
 equivalent to AA reconstruction improvement.
 
-The requested generation→new IQ-TREE ASR→benchmark overnight orchestrator is
-**not implemented**. This repository contains the working pieces and explicit
-next steps, not a claim that the unfinished pipeline has run.
+The workflows are separate stages. New IQ-TREE ASR execution is not automated
+here; stored posteriors are supplied as inputs. This is project context for a
+fresh session, not a queue of previous requests to continue.
 
 - [Scientific methods and caveats](docs/METHODS.md)
 - [Experiment inventory and findings](docs/EXPERIMENTS.md)

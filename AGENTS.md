@@ -17,5 +17,6 @@
    after changes. Update docs if numerical behavior, defaults or data changes.
 9. New dependencies/model downloads require RunPod instructions, not local
    installation attempts. Do not silently bypass model-loading security checks.
-10. No automated full generation→ASR→benchmark workflow exists yet. Do not mark
-    it complete based on planning, fake-model tests or reproduction of old results.
+10. This handoff contains no active task queue. Follow the user's new request;
+    do not resume previously discussed jobs or extensions automatically.
+    Historical workflow examples and limitations are context, not assignments.
