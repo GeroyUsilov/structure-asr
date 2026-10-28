@@ -149,3 +149,41 @@ Aligned Hamming comparisons treat every aligned column equally (including gap
 states in the empirical data). Empirical QE1.9d is a Glu/Gln comparison dataset,
 not an independently sampled EF-Tu family; differing alignment lengths and
 biological histories limit the interpretation of its distance comparison.
+
+## 6. Batched forward execution (`asr-grid forward`)
+
+The kernel of §1 is unchanged. Each preorder edge already has its own RNG stream
+spawned from the cell seed. An edge's trajectory therefore depends only on its
+parent sequence, that stream and the masked-site profiles, so edges whose
+parents are complete can advance concurrently. This holds across edges of one
+tree and across cells. Every step draws each active lane's site with its own
+stream, makes one batched ESM2 pass (one masked position per row, equal lengths,
+no padding), and then makes the same tempering and state draw as the serial
+kernel. With a deterministic predictor the output, including node order and
+event order, is identical to `ForwardSimulator` for any batch size or shard
+split (tested). On a GPU, batched fp16 reductions can differ from batch-1 calls,
+so a draw near a probability boundary can change. Grid outputs are labeled
+`batched multi-lane` and are not reproductions of the historical batch-1 runs;
+use `asr-evolve` for those. Batch size and scheduling order are recorded but are
+not part of the checkpoint identity. An interrupted edge restarts from its own
+fresh stream.
+
+## 7. Fixed-topology IQ-TREE ASR (`asr-grid asr`)
+
+Inputs are the tip alignment and the known topology, written without internal
+labels, supports or branch lengths. IQ-TREE (`-te`) keeps the topology and
+re-estimates branch lengths and model parameters. Simulated branch lengths count
+update attempts, not substitutions, so they are not supplied. `--ancestral`
+writes empirical-Bayes marginals.
+
+- AA: `-st AA -m MFP` (ModelFinder, BIC).
+- 3Di: states encoded as pseudo-amino-acids, `-st AA -m MFP -mdef <Q.3Di.AF> -mset Q3Di_AF`.
+  The exchangeabilities are fixed to the published Q.3Di.AF matrix (Garg &
+  Hochberg 2025, MBE 42:msaf124; CC0, doi:10.17617/3.1MJJBH). ModelFinder
+  chooses only the frequency and rate-heterogeneity components.
+- `--seed` is the cell seed. The command, IQ-TREE version, selected model and
+  input hashes are written to `<modality>.asr_manifest.json`.
+
+Using the true topology is a known-tree assumption that favors reconstruction
+relative to practice. The ESM2 generator is not a Markov substitution process,
+so every candidate model is misspecified; BIC picks the best available one.

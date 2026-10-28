@@ -10,7 +10,7 @@ loading ESM2/ProstT5 and without running IQ-TREE.
 - Six additional tests cover shared posterior loading, non-self proposal
   probabilities, exact small-state detailed balance, both samplers' interrupted
   resume, completed resume, length rejection and historical benchmark replay
-  (some checks are grouped inside one test method): 27 main-suite tests total.
+  (some checks are grouped inside one test method): 27 tests before the grid stage.
 - Both samplers' fake-encoder traces, checkpoints, best FASTAs and score tables
   match the original Desktop implementations byte-for-byte in a fixed-seed
   smoke run. The fake encoder maps AA strings directly to test 3Di strings;
@@ -23,6 +23,18 @@ loading ESM2/ProstT5 and without running IQ-TREE.
 - Plan-only higher-rate generation and Node34 `--validate-only` succeed.
 - The package wheel builds offline with `--no-deps --no-build-isolation`.
   The full checkout, rather than the wheel alone, supplies example data.
+
+- Grid stages (11 tests in `tests/test_grid.py`, 38 main-suite tests total):
+  - With a deterministic fake predictor, batched multi-lane forward simulation
+    reproduces serial `ForwardSimulator` nodes, node order, events and scores
+    for batch sizes 1/3/64.
+  - An interrupted grid resumes to the uninterrupted result. Two shards equal
+    one process. Plan counts equal `exact_planned_attempts` and the cap is enforced.
+  - The ASR stage, run with an IQ-TREE stub, succeeds with every truth file
+    deleted. It skips finished jobs and refuses outputs made from changed inputs.
+  - The opt-in real-IQ-TREE test runs only when `ASR_IQTREE` is set.
+- `asr-grid plan grids/example.toml` reproduces the historical μ=1 (4,777) and
+  documented μ=5 (23,896) call counts.
 
 These checks do not establish GPU performance, new model compatibility, sampler
 convergence, improved AA recovery or a completed new-data ASR benchmark.

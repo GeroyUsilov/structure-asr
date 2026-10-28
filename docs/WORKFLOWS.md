@@ -59,6 +59,66 @@ for new sequences or an explicit reproducibility study. The all-node CLI is
 historically restricted to μ=1 condition names, 77 nodes and length 396.
 Its restriction should not be silently bypassed.
 
+## Multi-regime grids (forward → 3Di → IQ-TREE ASR → evaluation)
+
+`asr-grid` (`structure_asr.grid`, wrapper `scripts/grid.sh`) runs a grid of
+(μ, τ, seed) cells on one tree and root, defined in a TOML file such as
+`grids/example.toml`. Paths in the TOML are relative to that file. Each stage
+is a separate command, resumable, and skips completed cells:
+
+| Stage | Where | Reads | Writes per cell |
+|---|---|---|---|
+| `plan` | CPU | grid, tree, root | `grid_plan.json` (exact call counts, cap check) |
+| `forward` | GPU | — | `simulation/` (same layout as `asr-evolve`), `checkpoint.json` |
+| `encode` | GPU | `simulation/ground_truth_nodes.fasta` | `three_di/leaves_3di.fasta` (inference input), `truth/ground_truth_nodes_3di.fasta` |
+| `asr` | CPU | tip FASTAs, label-free topology only | `asr/{aa,3di}.{state,treefile,iqtree,log}`, `*.asr_manifest.json` |
+| `evaluate` | CPU | ASR outputs + truth | `evaluation/{dataset,node}_summary.tsv`, mappings, site table |
+| `status` | any | — | prints per-cell completion |
+
+Cells live in `<outdir>/mu_<r>__tau_<t>__seed_<s>/`. `forward` batches one
+masked ESM2 pass over up to `--max-batch` edges drawn from all cells (see
+METHODS §6). `--shard i/n` splits cells round-robin across GPUs or pods that
+share a network volume; shards write disjoint directories. `plan` reports a
+per-cell lower bound on sequential passes (μ·L·deepest root-to-tip length), which
+no batch size can beat. Use it with `batch_timings_*.tsv` to size runs.
+
+RunPod recipe:
+
+```bash
+# Network volume holds the checkout, HF_HOME, .cache/ and results/.
+bash scripts/grid.sh plan grids/my_grid.toml
+bash scripts/grid.sh forward grids/my_grid.toml --validate-only
+bash scripts/grid.sh forward grids/my_grid.toml --max-batch 64 [--shard 0/2]
+bash scripts/grid.sh encode grids/my_grid.toml --batch-size 32 --resume
+# CPU pod (or the GPU pod's spare cores), same volume:
+bash scripts/fetch_3di_matrix.sh
+#   install IQ-TREE 3.1.4 from the official release (Linux-intel or Linux-arm
+#   tarball, verify the GitHub-listed sha256), unpack under .cache/tools/,
+#   then export ASR_IQTREE=$PWD/.cache/tools/iqtree-3.1.4-Linux-intel/bin/iqtree3
+bash scripts/grid.sh asr grids/my_grid.toml --jobs "$(nproc)"
+bash scripts/grid.sh evaluate grids/my_grid.toml
+```
+
+Before a large grid, run a tiny one (e.g. `rates = [0.1]`, one τ and seed) end to
+end. Compare `--max-batch 1` with `--max-batch 64` output directories to measure
+how often batched fp16 numerics change a draw.
+
+`reconstruct` and `evaluate-dir` run the ASR and evaluation stages on one
+existing tip dataset, for example the bundled tips:
+
+```bash
+bash scripts/grid.sh reconstruct \
+  --aa-tips examples/ef_tu/tips/aa/ef_tu_tips_mu1_tau2_aa.fasta \
+  --three-di-tips examples/ef_tu/tips/3di/ef_tu_tips_mu1_tau2_3di.fasta \
+  --tree examples/ef_tu/reference/AB_eftu_rerooted.tre \
+  --three-di-matrix .cache/models/3di/Q.3Di.AF --outdir results/iqtree_local/mu1_tau2
+bash scripts/grid.sh evaluate-dir --asr-dir results/iqtree_local/mu1_tau2 \
+  --tree examples/ef_tu/reference/AB_eftu_rerooted.tre \
+  --truth-aa examples/ef_tu/mu1_tau2/truth_aa.fasta \
+  --truth-3di examples/ef_tu/mu1_tau2/truth_3di.fasta \
+  --condition mu1_tau2 --tau 2 --outdir results/iqtree_local/mu1_tau2/evaluation
+```
+
 ## ASR posterior inputs
 
 Sampling consumes IQ-TREE-style `.state` tables: tab-separated `Node`, `Site`,
@@ -67,10 +127,10 @@ AA and 3Di alignments must refer to the same positions. Tree files are needed
 for benchmarking mappings; do not join independently reconstructed nodes by
 number without verifying their topology.
 
-The repository does not currently run IQ-TREE. Supplied historical trees and
-posteriors are inputs, not evidence of a reproducible IQ-TREE command or model
-selection configuration. Add a documented inference stage before calling this
-an end-to-end new-data benchmark.
+`asr-grid asr`/`reconstruct` produce these files (METHODS §7). The *historical*
+`examples/ef_tu/mu1_tau*` trees and posteriors predate that stage. Their IQ-TREE
+command and model are unrecorded, so they are inputs, not evidence of the
+current configuration.
 
 ## Current uncertainty-weighted sampling
 

@@ -1,0 +1,21 @@
+# Example multi-regime grid. Paths are relative to this file.
+# Cells are the product rates x proposal_temperatures x seeds.
+[grid]
+name = "example_mu_tau_seed"
+outdir = "../results/grids/example_mu_tau_seed"
+tree = "../examples/ef_tu/reference/AB_eftu_rerooted.tre"
+alignment = "../examples/ef_tu/reference/EFTu_all_alignment.fasta"
+root_accession = "163840912"
+rates = [1, 2, 5]
+proposal_temperatures = [1, 1.5, 2]
+seeds = [731024, 11]
+model_name = "facebook/esm2_t33_650M_UR50D"
+dtype = "float16"
+max_attempts_per_cell = 100000
+
+[asr]
+iqtree = "iqtree3"              # or set ASR_IQTREE / pass --iqtree
+threads_per_job = 1
+aa_model = "MFP"                # ModelFinder, BIC
+three_di_matrix = "../.cache/models/3di/Q.3Di.AF"   # scripts/fetch_3di_matrix.sh
+three_di_model_name = "Q3Di_AF"

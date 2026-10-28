@@ -73,22 +73,11 @@ class ESM2MaskedSitePredictor:
     __call__ = predict_site_profile
 
 
-def make_site_predictor(parameters: Mapping):
+def load_esm2(model_name: str, device_name: str, dtype_name: str):
+    """Load (once per process) the masked LM shared by single and batched predictors."""
     import torch
     from transformers import AutoModelForMaskedLM, AutoTokenizer
 
-    model_name = str(parameters.get("model_name", "facebook/esm2_t33_650M_UR50D"))
-    device_name = str(parameters.get("device", "cuda"))
-    dtype_name = str(parameters.get("dtype", "float16"))
-    timings_value = parameters.get("timings_path")
-    resume_timings = bool(parameters.get("resume_timings", False))
-    progress_total = int(parameters.get("progress_total", 0))
-    progress_description = str(parameters.get("progress_description", "ESM2 passes"))
-    timings_path = (
-        Path(str(timings_value)).expanduser().resolve()
-        if timings_value is not None
-        else None
-    )
     if device_name.startswith("cuda") and not torch.cuda.is_available():
         raise RuntimeError("CUDA was requested but no CUDA device is visible")
     if not hasattr(torch, dtype_name):
@@ -111,6 +100,92 @@ def make_site_predictor(parameters: Mapping):
             tokenizer,
             torch.tensor(aa_ids, dtype=torch.long, device=device),
         )
+    model, tokenizer, aa_token_ids = _MODEL_CACHE[key]
+    return torch, device, model, tokenizer, aa_token_ids
+
+
+@dataclass
+class ESM2BatchedSitePredictor:
+    """One masked forward pass for many (sequence, site) pairs of equal length.
+
+    Each row masks exactly one site of its own sequence, so every profile is the
+    same conditional as ``ESM2MaskedSitePredictor``. GPU reductions may differ
+    numerically between batch sizes; see METHODS.md.
+    """
+
+    model: object
+    tokenizer: object
+    device: object
+    aa_token_ids: object
+    torch: object
+    last_forward_seconds: float = 0.0
+
+    def predict_site_profiles(self, sequences: list[str], sites: list[int]) -> np.ndarray:
+        if len(sequences) != len(sites) or not sequences:
+            raise ValueError("batched ESM2 call needs one site per sequence")
+        length = len(sequences[0])
+        for sequence, site in zip(sequences, sites):
+            if len(sequence) != length:
+                raise ValueError("batched ESM2 call requires equal sequence lengths")
+            if not 0 <= site < length:
+                raise IndexError(f"site {site} is outside sequence length {length}")
+            if set(sequence) - set(CANONICAL_AA):
+                raise ValueError("ESM2 exact generator accepts only canonical amino acids")
+        encoded = self.tokenizer(list(sequences), return_tensors="pt", add_special_tokens=True)
+        input_ids = encoded["input_ids"]
+        attention_mask = encoded["attention_mask"]
+        if tuple(input_ids.shape) != (len(sequences), length + 2):
+            raise RuntimeError(
+                "ESM2 tokenizer did not produce one token per residue plus BOS/EOS: "
+                f"got {tuple(input_ids.shape)} for {len(sequences)} x {length}"
+            )
+        rows = self.torch.arange(len(sequences))
+        positions = self.torch.tensor([site + 1 for site in sites], dtype=self.torch.long)
+        input_ids[rows, positions] = int(self.tokenizer.mask_token_id)
+        input_ids = input_ids.to(self.device)
+        attention_mask = attention_mask.to(self.device)
+        if self.device.type == "cuda":
+            self.torch.cuda.synchronize(self.device)
+        started = perf_counter()
+        with self.torch.inference_mode():
+            logits = self.model(input_ids=input_ids, attention_mask=attention_mask).logits
+        if self.device.type == "cuda":
+            self.torch.cuda.synchronize(self.device)
+        self.last_forward_seconds = perf_counter() - started
+        selected = logits[rows.to(self.device), positions.to(self.device)][:, self.aa_token_ids]
+        profiles = self.torch.softmax(selected.float(), dim=-1).detach().cpu().numpy()
+        if profiles.shape != (len(sequences), 20) or not np.isfinite(profiles).all():
+            raise RuntimeError("ESM2 returned an invalid batched site profile")
+        return profiles
+
+    __call__ = predict_site_profiles
+
+
+def make_batched_site_predictor(
+    model_name: str = "facebook/esm2_t33_650M_UR50D",
+    device: str = "cuda",
+    dtype: str = "float16",
+) -> ESM2BatchedSitePredictor:
+    torch, device_object, model, tokenizer, aa_token_ids = load_esm2(model_name, device, dtype)
+    return ESM2BatchedSitePredictor(model, tokenizer, device_object, aa_token_ids, torch)
+
+
+def make_site_predictor(parameters: Mapping):
+    model_name = str(parameters.get("model_name", "facebook/esm2_t33_650M_UR50D"))
+    device_name = str(parameters.get("device", "cuda"))
+    dtype_name = str(parameters.get("dtype", "float16"))
+    timings_value = parameters.get("timings_path")
+    resume_timings = bool(parameters.get("resume_timings", False))
+    progress_total = int(parameters.get("progress_total", 0))
+    progress_description = str(parameters.get("progress_description", "ESM2 passes"))
+    timings_path = (
+        Path(str(timings_value)).expanduser().resolve()
+        if timings_value is not None
+        else None
+    )
+    torch, device, model, tokenizer, aa_token_ids = load_esm2(
+        model_name, device_name, dtype_name
+    )
     initial_calls = 0
     if timings_path is not None:
         timings_path.parent.mkdir(parents=True, exist_ok=True)
@@ -144,7 +219,6 @@ def make_site_predictor(parameters: Mapping):
             unit="pass",
             dynamic_ncols=True,
         )
-    model, tokenizer, aa_token_ids = _MODEL_CACHE[key]
     return ESM2MaskedSitePredictor(
         model=model,
         tokenizer=tokenizer,

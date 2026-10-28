@@ -24,6 +24,7 @@ asr-evolve = "structure_asr.forward:main"
 asr-sample = "structure_asr.sampling:main"
 asr-sample-legacy = "structure_asr.legacy_sampling:main"
 asr-encode = "structure_asr.prostt5:main"
+asr-grid = "structure_asr.grid:main"
 asr-examples = "structure_asr.benchmark_examples:main"
 
 [tool.setuptools.packages.find]

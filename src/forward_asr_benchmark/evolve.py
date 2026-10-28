@@ -145,11 +145,22 @@ class MaskedSiteConditionalProposal:
             raise ValueError("proposal alphabet must contain unique tokens")
 
     def propose(self, sequence: str, rng: np.random.Generator) -> Proposal:
+        site = self.choose_site(sequence, rng)
+        return self.complete(sequence, site, self.site_profile_predictor(sequence, site), rng)
+
+    def choose_site(self, sequence: str, rng: np.random.Generator) -> int:
+        """First RNG draw of an update; split out so callers can batch model passes."""
         site = int(rng.integers(len(sequence)))
+        if sequence[site] not in self.alphabet:
+            raise ValueError(f"sequence token {sequence[site]!r} is not in masked-LM alphabet")
+        return site
+
+    def complete(
+        self, sequence: str, site: int, profile, rng: np.random.Generator
+    ) -> Proposal:
+        """Temper the masked-site profile and draw the new state (second RNG draw)."""
         old = sequence[site]
-        if old not in self.alphabet:
-            raise ValueError(f"sequence token {old!r} is not in masked-LM alphabet")
-        probabilities = np.asarray(self.site_profile_predictor(sequence, site), dtype=float)
+        probabilities = np.asarray(profile, dtype=float)
         expected = (len(self.alphabet),)
         if probabilities.shape != expected:
             raise ValueError(

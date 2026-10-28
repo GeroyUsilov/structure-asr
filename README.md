@@ -31,6 +31,8 @@ environment with NumPy, Biopython, tqdm, pandas and matplotlib installed.
 | `src/structure_asr/sampling.py` | Uncertainty-weighted Metropolis–Hastings sampler |
 | `src/structure_asr/legacy_sampling.py` | Historical equal-weight sampler; separately named |
 | `src/structure_asr/evaluation.py`, `score_placement.py` | Topology matching, truth scores and score distributions |
+| `src/structure_asr/grid.py`, `batched_forward.py`, `iqtree.py` | Multi-regime grids: batched ESM2 evolution, 3Di encoding, fixed-topology IQ-TREE ASR, evaluation |
+| `grids/` | Grid definitions (TOML) |
 | `examples/ef_tu/` | Tree, root-source alignment, nine tip datasets, two completed ASR cases |
 | `examples/glugln/` | Corrected AA Node168 / 3Di Node16 inputs, entropy and logo examples |
 | `docs/figures/` | Selected historical result figures |
@@ -67,7 +69,15 @@ bash scripts/sample_node34.sh 0.02 --validate-only
 bash scripts/sample_node34.sh 0.02
 ```
 
-The same command accepts `0.01`, `0.05`, or `0.1`; each weight has its own output
+Explore new forward regimes with a grid (μ × τ × seed). The stages are
+forward (GPU), 3Di encoding (GPU), IQ-TREE ASR (CPU) and evaluation (CPU):
+
+```bash
+bash scripts/grid.sh plan grids/example.toml
+bash scripts/grid.sh status grids/example.toml
+```
+
+The same Node34 command accepts `0.01`, `0.05`, or `0.1`; each weight has its own output
 directory. This sampler reads posterior inputs, not ground-truth FASTAs.
 The full handoff repository contains truth for evaluation and is not a physically
 blinded job archive. See [workflows](docs/WORKFLOWS.md) for conversion, historical
@@ -80,8 +90,9 @@ Across six representative historical reconstructions, AA errors changed from
 68 to 75 despite improved joint scores. Structural-score improvement is not
 equivalent to AA reconstruction improvement.
 
-The workflows are separate stages. New IQ-TREE ASR execution is not automated
-here; stored posteriors are supplied as inputs. This is project context for a
+The workflows are separate stages. `asr-grid` adds a documented fixed-topology
+IQ-TREE stage for new simulations. The historical posteriors in `examples/`
+predate it and have no recorded IQ-TREE command. This is project context for a
 fresh session, not a queue of previous requests to continue.
 
 - [Scientific methods and caveats](docs/METHODS.md)
