@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "forward-asr-benchmark"
+version = "0.1.0"
+description = "Ground-truth forward protein evolution for ancestral-sequence-reconstruction benchmarks"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "biopython>=1.81",
+  "numpy>=1.24",
+]
+
+[project.scripts]
+forward-asr = "forward_asr_benchmark.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

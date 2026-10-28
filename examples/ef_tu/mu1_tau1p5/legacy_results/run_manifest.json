@@ -1,0 +1,34 @@
+{
+  "completed_steps": 3000,
+  "configuration": {
+    "acceptance_mode": "legacy",
+    "alpha": 0.5,
+    "chains_per_node": 1,
+    "condition": "mu1_tau1p5",
+    "max_chunk_aa": 500,
+    "mcmc_temperature": 2.0,
+    "model": "Rostlab/ProstT5",
+    "n_iter": 3000,
+    "n_muts": 1,
+    "nodes": [
+      "Node1",
+      "Node29",
+      "Node34"
+    ],
+    "probability_floor": 5e-06,
+    "seed": 731024,
+    "start_mode": "aa_map"
+  },
+  "created_utc": "2026-09-14T09:28:21.125934+00:00",
+  "method": "joint AA/3Di sequence-space MCMC",
+  "objective": "alpha*log_P_AA(sequence) + (1-alpha)*log_P_3Di(ProstT5(sequence))",
+  "outputs": {
+    "chain_summary": "chain_summary.tsv",
+    "primary_3di": "joint_asr_best_3di.fasta",
+    "primary_aa": "joint_asr_best_aa.fasta",
+    "trace": "trace.tsv"
+  },
+  "prostt5_method": "deterministic greedy <AA2fold>",
+  "resolved_model_path": "/workspace/huggingface_cache/hub/models--Rostlab--ProstT5/snapshots/d7d097d5bf9a993ab8f68488b4681d6ca70db9e5",
+  "status": "complete"
+}
