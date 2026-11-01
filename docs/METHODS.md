@@ -187,3 +187,28 @@ writes empirical-Bayes marginals.
 Using the true topology is a known-tree assumption that favors reconstruction
 relative to practice. The ESM2 generator is not a Markov substitution process,
 so every candidate model is misspecified; BIC picks the best available one.
+
+## 8. Batched joint sampling over λ (`asr-grid sample`)
+
+The kernel of §3 is unchanged; `asr-sample` and the grid stage share one
+implementation (`SamplerRun`, `advance_runs`). Each grid run is one (cell, λ)
+with its own output directory, checkpoint and trace. At every step each
+unfinished run draws its proposals with each chain's own RNG; the changed
+sequences of all runs are encoded in one ProstT5 call (split into
+`--model-batch-size` batches); each run then makes its accept/reject draws.
+Identical sequences within a step are encoded once. A chain's draws depend only
+on its own RNG and the encodings, so with a deterministic encoder every run's
+trace and outputs equal a standalone `asr-sample` run with the same settings
+(tested). On a GPU, batch composition can change fp16 numerics, so a near-tie
+draw can differ from a standalone run; grid runs are not reproductions of the
+historical batch-of-8 runs.
+
+Inputs are the cell's `asr/aa.state` and `asr/3di.state` only. Nodes are named
+in the AA tree; each is paired with the 3Di-tree node that has the same tip
+partition, and the pairing is stored in the run configuration. By default
+every λ run of a cell uses the cell seed, so runs share starts and RNG streams
+and differ only through λ's effect on acceptance (the historical
+one-λ-per-machine design). λ=0 is the AA-only control: its 3Di is still
+encoded and reported but does not enter the score. Ground truth is read only by
+`evaluate`, after sampling. The best visited state is selected by model score;
+its truth comparison is evaluation, not selection.

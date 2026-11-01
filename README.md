@@ -31,7 +31,7 @@ environment with NumPy, Biopython, tqdm, pandas and matplotlib installed.
 | `src/structure_asr/sampling.py` | Uncertainty-weighted Metropolis–Hastings sampler |
 | `src/structure_asr/legacy_sampling.py` | Historical equal-weight sampler; separately named |
 | `src/structure_asr/evaluation.py`, `score_placement.py` | Topology matching, truth scores and score distributions |
-| `src/structure_asr/grid.py`, `batched_forward.py`, `iqtree.py` | Multi-regime grids: batched ESM2 evolution, 3Di encoding, fixed-topology IQ-TREE ASR, evaluation |
+| `src/structure_asr/grid.py`, `batched_forward.py`, `iqtree.py` | Multi-regime grids: batched ESM2 evolution, 3Di encoding, fixed-topology IQ-TREE ASR, batched joint sampling over λ, evaluation |
 | `grids/` | Grid definitions (TOML) |
 | `examples/ef_tu/` | Tree, root-source alignment, nine tip datasets, two completed ASR cases |
 | `examples/glugln/` | Corrected AA Node168 / 3Di Node16 inputs, entropy and logo examples |
@@ -69,8 +69,9 @@ bash scripts/sample_node34.sh 0.02 --validate-only
 bash scripts/sample_node34.sh 0.02
 ```
 
-Explore new forward regimes with a grid (μ × τ × seed). The stages are
-forward (GPU), 3Di encoding (GPU), IQ-TREE ASR (CPU) and evaluation (CPU):
+Explore new forward regimes with a grid (μ × τ × seed), optionally sampled at
+several structural weights λ. The stages are forward (GPU), 3Di encoding (GPU),
+IQ-TREE ASR (CPU), joint sampling (GPU) and evaluation (CPU):
 
 ```bash
 bash scripts/grid.sh plan grids/example.toml

@@ -1,3 +1,4 @@
+import csv
 import json
 import os
 import stat
@@ -8,6 +9,7 @@ import unittest
 import zlib
 from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 from Bio import Phylo
@@ -120,7 +122,7 @@ class BatchedForwardTests(unittest.TestCase):
                 load_checkpoint(path, other)
 
 
-def write_grid(directory: Path, **asr) -> Path:
+def write_grid(directory: Path, sample: str = "", **asr) -> Path:
     (directory / "tree.nwk").write_text(NEWICK, encoding="utf-8")
     write_fasta(directory / "aln.fasta", {"src|42": "MKTAYIAKQR-QISFVKSHFSRQ"})
     asr_lines = "\n".join(f"{key} = {json.dumps(value)}" for key, value in asr.items())
@@ -138,7 +140,7 @@ def write_grid(directory: Path, **asr) -> Path:
         max_attempts_per_cell = 1000
 
         [asr]
-        """) + asr_lines + "\n", encoding="utf-8")
+        """) + asr_lines + "\n" + sample, encoding="utf-8")
     return path
 
 
@@ -237,12 +239,16 @@ open(prefix + ".log", "w").write(json.dumps(args))
 '''
 
 
+def write_stub(directory: Path) -> str:
+    path = directory / "iqtree_stub"
+    path.write_text(STUB_IQTREE.format(python=sys.executable), encoding="utf-8")
+    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+    return str(path)
+
+
 class IqtreeStageTests(unittest.TestCase):
     def stub(self, directory: Path) -> str:
-        path = directory / "iqtree_stub"
-        path.write_text(STUB_IQTREE.format(python=sys.executable), encoding="utf-8")
-        path.chmod(path.stat().st_mode | stat.S_IXUSR)
-        return str(path)
+        return write_stub(directory)
 
     def test_topology_is_label_and_length_free(self):
         newick = iqtree.topology_newick(tree())
@@ -315,6 +321,153 @@ class IqtreeStageTests(unittest.TestCase):
             write_fasta(alignment, {name: "MKS" for name in "abcde"})
             with self.assertRaises(RuntimeError):
                 iqtree.run_job(job, executable, "stub")
+
+
+STATE_COLUMNS = "ARNDCQEGHILKMFPSTWYV"
+SAMPLE_TOML = textwrap.dedent("""\
+    [sample]
+    structural_lambdas = [0, 0.5]
+    nodes = ["Node1", "Node2"]
+    n_iter = 6
+    chains_per_node = 2
+    checkpoint_every = 2
+    """)
+
+
+def write_state(path: Path, posteriors: dict) -> None:
+    lines = ["# test posteriors", "Node\tSite\tState\t" + "\t".join("p_" + c for c in STATE_COLUMNS)]
+    for node, matrix in posteriors.items():
+        for site, row in enumerate(matrix, start=1):
+            lines.append(f"{node}\t{site}\t{STATE_COLUMNS[int(row.argmax())]}\t"
+                         + "\t".join(f"{value:.5f}" for value in row))
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def fake_3di(sequences):
+    """Deterministic AA->3Di stand-in with local context dependence."""
+    return ["".join(AA[zlib.crc32(sequence[max(0, i - 2):i + 3].encode()) % 20]
+                    for i in range(len(sequence))) for sequence in sequences]
+
+
+class GridSampleTests(unittest.TestCase):
+    def build(self, base: Path):
+        """Grid through ASR, with informative posteriors and a relabeled 3Di tree."""
+        matrix = base / "Q.test"
+        matrix.write_text(" ".join(["1"] * 210), encoding="utf-8")
+        grid = grid_module.load_grid(write_grid(base, SAMPLE_TOML, three_di_matrix=str(matrix)))
+        grid_module.run_forward(grid, batched, specs=grid.cells, max_batch=8)
+        grid_module.run_encode(grid, fake_encoder, specs=grid.cells, shard_name="all",
+                               batch_size=2, model_label="fake", model_info={}, resume=False)
+        grid_module.run_asr(grid, specs=grid.cells, executable=write_stub(base), workers=2)
+        length = len(grid.root_sequence)
+        for spec in grid.cells:
+            asr = grid.cell_dir(spec) / "asr"
+            rng = np.random.default_rng(spec.index)
+            aa = {f"Node{i}": rng.dirichlet(np.full(20, 0.2), size=length) for i in (1, 2, 3)}
+            three_di = {f"Node{i}": rng.dirichlet(np.full(20, 0.2), size=length) for i in (1, 2, 3)}
+            write_state(asr / "aa.state", aa)
+            # The 3Di tree names AA Node2's clade Node3: correspondence must come from topology.
+            (asr / "3di.treefile").write_text("(a,(b,c)Node3,(d,e)Node2)Node1;\n", encoding="utf-8")
+            write_state(asr / "3di.state", {"Node1": three_di["Node1"], "Node3": three_di["Node2"],
+                                            "Node2": three_di["Node3"]})
+            # Standalone-sampler input: the same 3Di posteriors under AA names.
+            write_state(asr / "3di_by_aa_name.state", three_di)
+        return grid
+
+    def standalone(self, grid, spec, structural_lambda, outdir: Path) -> None:
+        from structure_asr import sampling
+
+        asr = grid.cell_dir(spec) / "asr"
+        nodes = outdir.parent / "nodes.txt"
+        nodes.write_text("Node1\nNode2\n", encoding="utf-8")
+        argv = ["sample", "--aa-state", str(asr / "aa.state"),
+                "--three-di-state", str(asr / "3di_by_aa_name.state"),
+                "--nodes-file", str(nodes), "--condition", "standalone", "--outdir", str(outdir),
+                "--n-iter", "6", "--chains-per-node", "2", "--checkpoint-every", "2",
+                "--structural-lambda", str(structural_lambda), "--seed", str(spec.seed)]
+        with patch("sys.argv", argv), patch.object(
+            sampling, "load_prostt5", return_value=(None, None, None, None, Path("/fake/model"))
+        ), patch.object(sampling, "encode_sequences", lambda sequences, *_args: fake_3di(sequences)):
+            sampling.main()
+
+    def test_grid_sample_is_blind_resumable_and_matches_standalone_runs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            grid = self.build(base)
+            hidden = {}
+            for spec in grid.cells:
+                cell = grid.cell_dir(spec)
+                for path in (cell / "simulation" / "ground_truth_nodes.fasta",
+                             cell / "truth" / "ground_truth_nodes_3di.fasta"):
+                    hidden[path] = path.read_bytes()
+                    path.unlink()
+            calls = 0
+
+            def interrupted(sequences):
+                nonlocal calls
+                calls += 1
+                if calls == 5:
+                    raise RuntimeError("simulated interruption")
+                return fake_3di(sequences)
+
+            options = dict(specs=grid.cells, model="fake", resolved_model="/fake/model",
+                           shard_name="all")
+            with self.assertRaisesRegex(RuntimeError, "simulated interruption"):
+                grid_module.run_sample(grid, interrupted, resume=False, **options)
+            with self.assertRaisesRegex(RuntimeError, "requires --resume"):
+                grid_module.run_sample(grid, fake_3di, resume=False, **options)
+            written = grid_module.run_sample(grid, fake_3di, resume=True, **options)
+            self.assertEqual(len(written), 8)
+            self.assertTrue(all(grid_module.sample_complete(grid, spec) for spec in grid.cells))
+            self.assertEqual(grid_module.run_sample(grid, fake_3di, resume=True, **options), [])
+            # 4 cells x 2 lambdas x 2 nodes x 2 chains start at AA-MAP: one encoding per cell node.
+            with (grid.outdir / "sample_timings_all.tsv").open() as handle:
+                first = next(csv.DictReader(handle, delimiter="\t"))
+            self.assertEqual((int(first["sequences"]), int(first["unique_sequences"])), (32, 8))
+
+            for spec in grid.cells[:2]:
+                for value in (0, 0.5):
+                    run = grid_module.sample_dir(grid, spec, value)
+                    config = json.loads((run / "run_manifest.json").read_text())["configuration"]
+                    self.assertEqual(config["three_di_nodes"], {"Node1": "Node1", "Node2": "Node3"})
+                    self.assertEqual(config["seed"], spec.seed)
+                    reference = base / f"standalone_{spec.index}_{value}" / "run"
+                    reference.parent.mkdir()
+                    self.standalone(grid, spec, value, reference)
+                    for name in ("trace.tsv", "chain_summary.tsv", "final_aa.fasta",
+                                 "joint_asr_best_aa.fasta", "joint_asr_best_3di.fasta",
+                                 "aa_map_start_3di.fasta", "site_proposal_weights.tsv"):
+                        self.assertEqual((run / name).read_text(), (reference / name).read_text(),
+                                         f"{spec.label} lambda={value} {name}")
+
+            for path, content in hidden.items():
+                path.write_bytes(content)
+            grid_module.run_evaluate(grid, specs=grid.cells, outdir=base / "evaluation")
+            with (base / "evaluation" / "sample_summary.tsv").open() as handle:
+                rows = list(csv.DictReader(handle, delimiter="\t"))
+            self.assertEqual(len(rows), 4 * 2 * 2)
+            self.assertTrue(all(row["ground_truth_node"] and row["status"] == "complete" for row in rows))
+            self.assertTrue(all(int(row["best_aa_errors"]) <= int(row["sites"]) for row in rows))
+
+    def test_sample_settings_validation_and_plan(self):
+        settings = grid_module.SampleSettings.from_toml({"structural_lambdas": [0.01], "nodes": "all"})
+        self.assertIsNone(settings.nodes)
+        self.assertEqual(settings.n_iter, 3000)
+        for bad in ({"structural_lambdas": [0.01]},
+                    {"structural_lambdas": [0.01, 0.01], "nodes": ["Node1"]},
+                    {"structural_lambdas": [-1], "nodes": ["Node1"]},
+                    {"structural_lambdas": [0.01], "nodes": []},
+                    {"structural_lambdas": [0.01], "nodes": ["Node1"], "lambda": 2},
+                    {"structural_lambdas": [0.01], "nodes": ["Node1"], "start_mode": "truth"}):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                grid_module.SampleSettings.from_toml(bad)
+        with tempfile.TemporaryDirectory() as directory:
+            grid = grid_module.load_grid(write_grid(Path(directory), SAMPLE_TOML.replace(
+                'nodes = ["Node1", "Node2"]', 'nodes = "all"')))
+            sample = grid_module.plan(grid)["sample"]
+            self.assertEqual(sample["nodes_per_cell"], 3)
+            self.assertEqual(sample["total_chains"], 4 * 2 * 3 * 2)
+            self.assertEqual(sample["total_chain_steps"], 4 * 2 * 3 * 2 * 6)
 
 
 @unittest.skipUnless(os.environ.get("ASR_IQTREE"), "set ASR_IQTREE to run real IQ-TREE")

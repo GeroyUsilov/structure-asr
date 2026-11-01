@@ -72,7 +72,8 @@ is a separate command, resumable, and skips completed cells:
 | `forward` | GPU | — | `simulation/` (same layout as `asr-evolve`), `checkpoint.json` |
 | `encode` | GPU | `simulation/ground_truth_nodes.fasta` | `three_di/leaves_3di.fasta` (inference input), `truth/ground_truth_nodes_3di.fasta` |
 | `asr` | CPU | tip FASTAs, label-free topology only | `asr/{aa,3di}.{state,treefile,iqtree,log}`, `*.asr_manifest.json` |
-| `evaluate` | CPU | ASR outputs + truth | `evaluation/{dataset,node}_summary.tsv`, mappings, site table |
+| `sample` | GPU | `asr/` only (`[sample]` section) | `sample/lambda_<λ>/` (same files as `asr-sample`) |
+| `evaluate` | CPU | ASR + sample outputs + truth | `evaluation/{dataset,node,sample}_summary.tsv`, mappings, site table |
 | `status` | any | — | prints per-cell completion |
 
 Cells live in `<outdir>/mu_<r>__tau_<t>__seed_<s>/`. `forward` batches one
@@ -96,12 +97,32 @@ bash scripts/fetch_3di_matrix.sh
 #   tarball, verify the GitHub-listed sha256), unpack under .cache/tools/,
 #   then export ASR_IQTREE=$PWD/.cache/tools/iqtree-3.1.4-Linux-intel/bin/iqtree3
 bash scripts/grid.sh asr grids/my_grid.toml --jobs "$(nproc)"
+# GPU again:
+bash scripts/grid.sh sample grids/my_grid.toml --validate-only
+bash scripts/grid.sh sample grids/my_grid.toml --model-batch-size 64 --resume [--shard 0/2]
 bash scripts/grid.sh evaluate grids/my_grid.toml
 ```
 
-Before a large grid, run a tiny one (e.g. `rates = [0.1]`, one τ and seed) end to
-end. Compare `--max-batch 1` with `--max-batch 64` output directories to measure
-how often batched fp16 numerics change a draw.
+`sample` runs the uncertainty-weighted MH sampler (METHODS §3, §8) once per
+(cell, λ) in `[sample].structural_lambdas`, for the AA-tree nodes in
+`[sample].nodes` (or `"all"`). Other `[sample]` keys mirror the
+`python -m structure_asr.sampling` options and defaults (`n_iter`,
+`chains_per_node`, `mcmc_temperature`, `site_uncertainty_mixture`,
+`site_weight_power`, `seed`, `start_mode`, `probability_floor`,
+`checkpoint_every`, `max_chunk_aa`); `seed` defaults to the cell seed. All runs in
+a shard advance together, one ProstT5 batch per step, so a process needs
+`n_iter` sequential steps however many cells and λ values it holds. Each run
+checkpoints separately; `--resume` continues partial runs, and finished runs are
+skipped. `sample_timings_<shard>.tsv` logs sequences, distinct sequences and
+seconds per step. `evaluate` adds `sample_summary.tsv`: per (cell, λ, node), AA
+and 3Di errors of the AA-MAP start and of the best-scoring visited state.
+
+Before a large grid, run `grids/calibration.toml` end to end: one μ=1 cell, then
+20 sampler steps for all 37 nodes at two λ values (74 chains). Its
+`batch_timings_*.tsv` and `sample_timings_*.tsv` give ESM2 calls/s and ProstT5
+seconds per step on that GPU; `plan` then gives the call and chain-step counts
+for any grid. Comparing `forward --max-batch 1` with `--max-batch 64` output
+directories (use `--outdir`) measures how often batched fp16 numerics change a draw.
 
 `reconstruct` and `evaluate-dir` run the ASR and evaluation stages on one
 existing tip dataset, for example the bundled tips:

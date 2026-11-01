@@ -362,6 +362,261 @@ def write_outputs(
     )
 
 
+class SamplerRun:
+    """One sampler configuration's chains, checkpoint, trace and outputs.
+
+    The step logic is shared by ``main`` (one configuration) and
+    ``structure_asr.grid sample`` (many configurations whose ProstT5 calls are
+    batched together). Each chain owns its RNG, so interleaving configurations
+    does not change any chain's draws.
+    """
+
+    def __init__(
+        self,
+        *,
+        output: Path,
+        config: dict[str, object],
+        nodes: list[str],
+        aa: OrderedDict[str, NodePosterior],
+        three_di: OrderedDict[str, NodePosterior],
+        site_proposals: dict[str, tuple[np.ndarray, np.ndarray]],
+        checkpoint_every: int,
+    ) -> None:
+        self.output = output
+        self.config = config
+        self.nodes = nodes
+        self.aa = aa
+        self.three_di = three_di
+        self.site_proposals = site_proposals
+        self.checkpoint_every = checkpoint_every
+        self.n_iter = int(config["n_iter"])
+        self.structural_lambda = float(config["structural_lambda"])
+        self.mcmc_temperature = float(config["mcmc_temperature"])
+        self.checkpoint_path = output / "checkpoint.json"
+        self.trace_path = output / "trace.tsv"
+        self.completed_step = 0
+        self.states: list[ChainState] = []
+        self.trace_buffer: list[dict[str, object]] = []
+        self._starts: list[tuple[str, int, np.random.Generator, str]] = []
+        self._proposals: list[dict[str, object]] = []
+        self._changed_indices: list[int] = []
+
+    @property
+    def finished(self) -> bool:
+        return self.completed_step >= self.n_iter
+
+    def write_site_proposals(self) -> None:
+        self.output.mkdir(parents=True, exist_ok=True)
+        write_site_proposals(
+            self.output / "site_proposal_weights.tsv", self.nodes, self.aa, self.site_proposals
+        )
+
+    def prepare(self, *, resume: bool) -> list[tuple[str, int, np.random.Generator, str]] | None:
+        """Resume from a checkpoint (returns None) or return starts needing encoding."""
+        if resume and self.checkpoint_path.exists():
+            checkpoint = json.loads(self.checkpoint_path.read_text(encoding="utf-8"))
+            if checkpoint["configuration"] != self.config:
+                raise ValueError("checkpoint configuration does not match this run")
+            self.completed_step = int(checkpoint["completed_step"])
+            self.states = [chain_from_json(dict(item)) for item in checkpoint["chains"]]
+            trim_trace(self.trace_path, self.completed_step)
+            print(f"Resuming after MCMC step {self.completed_step:,}", flush=True)
+            return None
+        if self.checkpoint_path.exists() or self.trace_path.exists():
+            raise RuntimeError("existing output requires --resume or a new output directory")
+        seed = int(self.config["seed"])
+        self._starts = []
+        for node in self.nodes:
+            node_number = node_sort_key(node)[1]
+            for chain_index in range(1, int(self.config["chains_per_node"]) + 1):
+                rng = np.random.default_rng(
+                    np.random.SeedSequence([seed, node_number, chain_index])
+                )
+                start = (
+                    aa_map_sequence(self.aa[node])
+                    if self.config["start_mode"] == "aa_map"
+                    else sample_sequence(self.aa[node], rng)
+                )
+                self._starts.append((node, chain_index, rng, start))
+        return self._starts
+
+    def start(self, start_structures: list[str]) -> None:
+        for (node, chain_index, rng, start), structure in zip(self._starts, start_structures):
+            lp_aa = sequence_log_probability(self.aa[node], start)
+            lp_3di = sequence_log_probability(self.three_di[node], structure)
+            lp_joint = lp_aa + self.structural_lambda * lp_3di
+            self.states.append(
+                ChainState(
+                    node=node,
+                    chain=chain_index,
+                    rng=rng,
+                    start_seq=start,
+                    start_struct=structure,
+                    start_log_p_aa=lp_aa,
+                    start_log_p_3di=lp_3di,
+                    start_log_p_joint=lp_joint,
+                    current_seq=start,
+                    current_struct=structure,
+                    current_log_p_aa=lp_aa,
+                    current_log_p_3di=lp_3di,
+                    current_log_p_joint=lp_joint,
+                    best_seq=start,
+                    best_struct=structure,
+                    best_log_p_aa=lp_aa,
+                    best_log_p_3di=lp_3di,
+                    best_log_p_joint=lp_joint,
+                )
+            )
+        self._starts = []
+
+    def propose(self) -> list[str]:
+        """Draw one proposal per chain; return the sequences needing encoding."""
+        self._proposals = []
+        self._changed_indices = []
+        changed_sequences = []
+        for index, state in enumerate(self.states):
+            uncertainties, site_weights = self.site_proposals[state.node]
+            sequence, mutations, log_q_forward, log_q_reverse, site = propose_sequence(
+                state, self.aa[state.node], site_weights
+            )
+            self._proposals.append(
+                {
+                    "sequence": sequence,
+                    "mutations": mutations,
+                    "log_q_forward": log_q_forward,
+                    "log_q_reverse": log_q_reverse,
+                    "site": site,
+                    "site_uncertainty": float(uncertainties[site]),
+                    "site_weight": float(site_weights[site]),
+                }
+            )
+            if sequence != state.current_seq:
+                self._changed_indices.append(index)
+                changed_sequences.append(sequence)
+        return changed_sequences
+
+    def accept(self, changed_structures: list[str]) -> None:
+        step = self.completed_step + 1
+        structure_by_index = dict(zip(self._changed_indices, changed_structures))
+        for index, (state, proposal) in enumerate(zip(self.states, self._proposals)):
+            candidate_seq = str(proposal["sequence"])
+            candidate_struct = structure_by_index.get(index, state.current_struct)
+            candidate_aa = sequence_log_probability(self.aa[state.node], candidate_seq)
+            candidate_3di = sequence_log_probability(self.three_di[state.node], candidate_struct)
+            candidate_joint = candidate_aa + self.structural_lambda * candidate_3di
+            log_acceptance = (candidate_joint - state.current_log_p_joint) / self.mcmc_temperature
+            log_acceptance += float(proposal["log_q_reverse"]) - float(proposal["log_q_forward"])
+            log_acceptance = min(0.0, log_acceptance)
+            accepted = bool(math.log(max(state.rng.random(), np.finfo(float).tiny)) < log_acceptance)
+            if accepted:
+                state.current_seq = candidate_seq
+                state.current_struct = candidate_struct
+                state.current_log_p_aa = candidate_aa
+                state.current_log_p_3di = candidate_3di
+                state.current_log_p_joint = candidate_joint
+                state.accepted += 1
+                if candidate_joint > state.best_log_p_joint:
+                    state.best_seq = candidate_seq
+                    state.best_struct = candidate_struct
+                    state.best_log_p_aa = candidate_aa
+                    state.best_log_p_3di = candidate_3di
+                    state.best_log_p_joint = candidate_joint
+            self.trace_buffer.append(
+                {
+                    "step": step,
+                    "node": state.node,
+                    "chain": state.chain,
+                    "accepted": accepted,
+                    "mutations": proposal["mutations"],
+                    "site_uncertainty": proposal["site_uncertainty"],
+                    "site_weight": proposal["site_weight"],
+                    "log_acceptance": log_acceptance,
+                    "proposal_log_q_forward": proposal["log_q_forward"],
+                    "proposal_log_q_reverse": proposal["log_q_reverse"],
+                    "candidate_log_p_aa": candidate_aa,
+                    "candidate_log_p_3di": candidate_3di,
+                    "candidate_log_p_joint": candidate_joint,
+                    "current_log_p_aa": state.current_log_p_aa,
+                    "current_log_p_3di": state.current_log_p_3di,
+                    "current_log_p_joint": state.current_log_p_joint,
+                    "best_log_p_joint": state.best_log_p_joint,
+                }
+            )
+        self.completed_step = step
+
+    def checkpoint(self, resolved_model: str) -> None:
+        step = self.completed_step
+        if step % self.checkpoint_every == 0 or step == self.n_iter:
+            append_trace(self.trace_path, self.trace_buffer)
+            self.trace_buffer.clear()
+            atomic_write_json(
+                self.checkpoint_path,
+                {
+                    "configuration": self.config,
+                    "completed_step": step,
+                    "chains": [chain_to_json(state) for state in self.states],
+                },
+            )
+            write_outputs(self.output, self.states, self.config, resolved_model, step)
+
+
+def advance_runs(
+    runs: list[SamplerRun],
+    encode,
+    resolved_model: str,
+    *,
+    resume: bool,
+    desc: str,
+) -> None:
+    """Start or resume ``runs`` and step them in lockstep to completion.
+
+    Each step makes one ``encode(sequences)`` call holding every unfinished
+    run's changed proposals, in run order. Runs that finish earlier drop out.
+    """
+
+    def encode_split(groups: list[list[str]]) -> list[list[str]]:
+        flat = [sequence for group in groups for sequence in group]
+        structures = encode(flat) if flat else []
+        if len(structures) != len(flat):
+            raise RuntimeError("encoder returned a different number of structures")
+        split, offset = [], 0
+        for group in groups:
+            split.append(structures[offset : offset + len(group)])
+            offset += len(group)
+        return split
+
+    starting = []
+    for run in runs:
+        starts = run.prepare(resume=resume)
+        if starts is not None:
+            starting.append((run, [start for _node, _chain, _rng, start in starts]))
+    if starting:
+        print(f"Encoding {sum(len(group) for _run, group in starting)} starting sequences", flush=True)
+        for (run, _group), structures in zip(
+            starting, encode_split([group for _run, group in starting])
+        ):
+            run.start(structures)
+
+    progress = tqdm(
+        total=max(run.n_iter for run in runs),
+        initial=min(run.completed_step for run in runs),
+        desc=desc,
+        unit="step",
+    )
+    while True:
+        active = [run for run in runs if not run.finished]
+        if not active:
+            break
+        for run, structures in zip(active, encode_split([run.propose() for run in active])):
+            run.accept(structures)
+            run.checkpoint(resolved_model)
+        accepted = sum(state.accepted for run in active for state in run.states)
+        proposed = sum(run.completed_step * len(run.states) for run in active)
+        progress.update(1)
+        progress.set_postfix(acceptance=f"{accepted / proposed:.3f}")
+    progress.close()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--aa-state", type=Path, required=True)
@@ -432,48 +687,24 @@ def main() -> None:
         )
         return
 
-    output = args.outdir.resolve()
-    output.mkdir(parents=True, exist_ok=True)
-    write_site_proposals(output / "site_proposal_weights.tsv", nodes, aa, site_proposals)
-    checkpoint_path = output / "checkpoint.json"
-    trace_path = output / "trace.tsv"
-    config = config_payload(args, nodes)
+    run = SamplerRun(
+        output=args.outdir.resolve(),
+        config=config_payload(args, nodes),
+        nodes=nodes,
+        aa=aa,
+        three_di=three_di,
+        site_proposals=site_proposals,
+        checkpoint_every=args.checkpoint_every,
+    )
+    run.write_site_proposals()
 
     torch_module, tokenizer, model, device, resolved_model = load_prostt5(
         args.model, args.device, args.dtype
     )
-    completed_step = 0
-    states: list[ChainState]
-    if args.resume and checkpoint_path.exists():
-        checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
-        if checkpoint["configuration"] != config:
-            raise ValueError("checkpoint configuration does not match this run")
-        completed_step = int(checkpoint["completed_step"])
-        states = [chain_from_json(dict(item)) for item in checkpoint["chains"]]
-        trim_trace(trace_path, completed_step)
-        print(f"Resuming after MCMC step {completed_step:,}", flush=True)
-    else:
-        if checkpoint_path.exists() or trace_path.exists():
-            raise RuntimeError("existing output requires --resume or a new output directory")
-        states = []
-        starts: list[str] = []
-        metadata: list[tuple[str, int, np.random.Generator]] = []
-        for node in nodes:
-            node_number = node_sort_key(node)[1]
-            for chain_index in range(1, args.chains_per_node + 1):
-                rng = np.random.default_rng(
-                    np.random.SeedSequence([args.seed, node_number, chain_index])
-                )
-                start = (
-                    aa_map_sequence(aa[node])
-                    if args.start_mode == "aa_map"
-                    else sample_sequence(aa[node], rng)
-                )
-                starts.append(start)
-                metadata.append((node, chain_index, rng))
-        print(f"Encoding {len(starts)} starting sequences", flush=True)
-        start_structures = encode_sequences(
-            starts,
+
+    def encode(sequences: list[str]) -> list[str]:
+        return encode_sequences(
+            sequences,
             tokenizer,
             model,
             device,
@@ -481,139 +712,11 @@ def main() -> None:
             args.model_batch_size,
             args.max_chunk_aa,
         )
-        for start, structure, (node, chain_index, rng) in zip(
-            starts, start_structures, metadata
-        ):
-            lp_aa = sequence_log_probability(aa[node], start)
-            lp_3di = sequence_log_probability(three_di[node], structure)
-            lp_joint = lp_aa + args.structural_lambda * lp_3di
-            states.append(
-                ChainState(
-                    node=node,
-                    chain=chain_index,
-                    rng=rng,
-                    start_seq=start,
-                    start_struct=structure,
-                    start_log_p_aa=lp_aa,
-                    start_log_p_3di=lp_3di,
-                    start_log_p_joint=lp_joint,
-                    current_seq=start,
-                    current_struct=structure,
-                    current_log_p_aa=lp_aa,
-                    current_log_p_3di=lp_3di,
-                    current_log_p_joint=lp_joint,
-                    best_seq=start,
-                    best_struct=structure,
-                    best_log_p_aa=lp_aa,
-                    best_log_p_3di=lp_3di,
-                    best_log_p_joint=lp_joint,
-                )
-            )
 
-    trace_buffer: list[dict[str, object]] = []
-    progress = tqdm(
-        range(completed_step + 1, args.n_iter + 1),
-        total=args.n_iter,
-        initial=completed_step,
-        desc=f"Joint ASR {args.condition}",
-        unit="step",
+    advance_runs(
+        [run], encode, str(resolved_model), resume=args.resume, desc=f"Joint ASR {args.condition}"
     )
-    for step in progress:
-        proposals = []
-        changed_indices = []
-        changed_sequences = []
-        for index, state in enumerate(states):
-            uncertainties, site_weights = site_proposals[state.node]
-            sequence, mutations, log_q_forward, log_q_reverse, site = propose_sequence(
-                state, aa[state.node], site_weights
-            )
-            proposals.append(
-                {
-                    "sequence": sequence,
-                    "mutations": mutations,
-                    "log_q_forward": log_q_forward,
-                    "log_q_reverse": log_q_reverse,
-                    "site": site,
-                    "site_uncertainty": float(uncertainties[site]),
-                    "site_weight": float(site_weights[site]),
-                }
-            )
-            if sequence != state.current_seq:
-                changed_indices.append(index)
-                changed_sequences.append(sequence)
-        changed_structures = encode_sequences(
-            changed_sequences,
-            tokenizer,
-            model,
-            device,
-            torch_module,
-            args.model_batch_size,
-            args.max_chunk_aa,
-        ) if changed_sequences else []
-        structure_by_index = dict(zip(changed_indices, changed_structures))
-
-        for index, (state, proposal) in enumerate(zip(states, proposals)):
-            candidate_seq = str(proposal["sequence"])
-            candidate_struct = structure_by_index.get(index, state.current_struct)
-            candidate_aa = sequence_log_probability(aa[state.node], candidate_seq)
-            candidate_3di = sequence_log_probability(three_di[state.node], candidate_struct)
-            candidate_joint = candidate_aa + args.structural_lambda * candidate_3di
-            log_acceptance = (candidate_joint - state.current_log_p_joint) / args.mcmc_temperature
-            log_acceptance += float(proposal["log_q_reverse"]) - float(proposal["log_q_forward"])
-            log_acceptance = min(0.0, log_acceptance)
-            accepted = bool(math.log(max(state.rng.random(), np.finfo(float).tiny)) < log_acceptance)
-            if accepted:
-                state.current_seq = candidate_seq
-                state.current_struct = candidate_struct
-                state.current_log_p_aa = candidate_aa
-                state.current_log_p_3di = candidate_3di
-                state.current_log_p_joint = candidate_joint
-                state.accepted += 1
-                if candidate_joint > state.best_log_p_joint:
-                    state.best_seq = candidate_seq
-                    state.best_struct = candidate_struct
-                    state.best_log_p_aa = candidate_aa
-                    state.best_log_p_3di = candidate_3di
-                    state.best_log_p_joint = candidate_joint
-            trace_buffer.append(
-                {
-                    "step": step,
-                    "node": state.node,
-                    "chain": state.chain,
-                    "accepted": accepted,
-                    "mutations": proposal["mutations"],
-                    "site_uncertainty": proposal["site_uncertainty"],
-                    "site_weight": proposal["site_weight"],
-                    "log_acceptance": log_acceptance,
-                    "proposal_log_q_forward": proposal["log_q_forward"],
-                    "proposal_log_q_reverse": proposal["log_q_reverse"],
-                    "candidate_log_p_aa": candidate_aa,
-                    "candidate_log_p_3di": candidate_3di,
-                    "candidate_log_p_joint": candidate_joint,
-                    "current_log_p_aa": state.current_log_p_aa,
-                    "current_log_p_3di": state.current_log_p_3di,
-                    "current_log_p_joint": state.current_log_p_joint,
-                    "best_log_p_joint": state.best_log_p_joint,
-                }
-            )
-
-        if step % args.checkpoint_every == 0 or step == args.n_iter:
-            append_trace(trace_path, trace_buffer)
-            trace_buffer.clear()
-            atomic_write_json(
-                checkpoint_path,
-                {
-                    "configuration": config,
-                    "completed_step": step,
-                    "chains": [chain_to_json(state) for state in states],
-                },
-            )
-            write_outputs(output, states, config, str(resolved_model), step)
-        progress.set_postfix(
-            acceptance=f"{sum(state.accepted for state in states)/(step*len(states)):.3f}"
-        )
-    progress.close()
-    print(f"Completed {args.condition}: {output}", flush=True)
+    print(f"Completed {args.condition}: {run.output}", flush=True)
 
 
 if __name__ == "__main__":

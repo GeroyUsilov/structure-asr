@@ -16,7 +16,7 @@ ancestral sequences.
 
 1. Read `METHODS.md` for exact kernels and conventions.
 2. Consult `WORKFLOWS.md` for RunPod setup, launch commands, checkpoints and outputs.
-3. For optional local validation, the README describes the CPU test suite (38 tests);
+3. For optional local validation, the README describes the CPU test suite (40 tests);
    `bash scripts/reproduce_examples.sh` regenerates historical
    benchmark tables, score histograms, tip-distance ECDFs, Glu/Gln entropy plots
    and logos. All inputs are in this repository; no Desktop paths are needed.
@@ -52,7 +52,8 @@ RunPod source code, dependency files, launch scripts and usage instructions are
 included in this repository. `WORKFLOWS.md` is the entry point. Model weights
 are not bundled. The available workflows are separate stages. `asr-grid`
 (WORKFLOWS "Multi-regime grids") chains batched forward simulation, 3Di
-encoding, fixed-topology IQ-TREE ASR and evaluation for new (μ, τ, seed) grids.
+encoding, fixed-topology IQ-TREE ASR, batched joint sampling over structural
+weights λ and evaluation for new (μ, τ, seed) grids.
 The historical posterior files in `examples/` remain fixed inputs. `VALIDATION.md` records the tested scope and known limitations.
 
 ## User preferences and boundaries

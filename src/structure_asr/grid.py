@@ -8,6 +8,8 @@ Stages are separate commands so each runs where it belongs:
   forward   GPU   batched masked-site ESM2 evolution across all cells
   encode    GPU   ProstT5 AA->3Di for every simulated node (tips are inference input)
   asr       CPU   IQ-TREE marginal ASR on the fixed topology (AA and 3Di)
+  sample    GPU   joint AA/3Di MH sampling for every cell x structural lambda,
+                  with all chains' ProstT5 calls batched together
   evaluate  CPU   post-inference topology-mapped comparison with truth
   status    any   per-cell stage completion
 
@@ -20,9 +22,11 @@ import csv
 import json
 import math
 import os
+import time
 import tomllib
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -30,7 +34,7 @@ from Bio import Phylo
 
 from forward_asr_benchmark.io import read_fasta, write_fasta, write_run
 from forward_asr_benchmark.tree import load_tree
-from structure_asr import iqtree
+from structure_asr import iqtree, sampling
 from structure_asr.batched_forward import (
     Cell,
     finished_result,
@@ -39,8 +43,9 @@ from structure_asr.batched_forward import (
     write_checkpoint,
 )
 from structure_asr.evaluation import read_fasta as read_ordered_fasta
-from structure_asr.evaluation import score_dataset, topology_mapping, write_tsv
+from structure_asr.evaluation import score_dataset, topology_mapping, vertex_signatures, write_tsv
 from structure_asr.forward import choose_root, exact_planned_attempts, rate_label, sha256
+from structure_asr.posteriors import load_state, node_sort_key
 
 THREE_DI_METHOD = "deterministic greedy <AA2fold> generation"
 SITE_COLUMNS = [
@@ -65,6 +70,63 @@ class CellSpec:
         )
 
 
+@dataclass(frozen=True)
+class SampleSettings:
+    """``[sample]``: one sampler run per (cell, structural lambda).
+
+    Defaults match ``python -m structure_asr.sampling``. ``nodes`` names AA-tree
+    (``asr/aa.treefile``) internal nodes, or is ``"all"``; the 3Di posterior for
+    each is found by topology. ``seed`` defaults to the cell seed, so the runs of
+    one cell share starts and RNG streams and differ only in lambda.
+    """
+
+    structural_lambdas: tuple[float, ...]
+    nodes: tuple[str, ...] | None
+    n_iter: int = 3000
+    chains_per_node: int = 1
+    mcmc_temperature: float = 2.0
+    site_uncertainty_mixture: float = 0.9
+    site_weight_power: float = 1.0
+    seed: int | None = None
+    start_mode: str = "aa_map"
+    probability_floor: float = 5e-6
+    checkpoint_every: int = 10
+    max_chunk_aa: int = 500
+
+    @classmethod
+    def from_toml(cls, section: dict) -> "SampleSettings":
+        section = dict(section)
+        unknown = set(section) - set(cls.__dataclass_fields__)
+        if unknown:
+            raise ValueError(f"unknown [sample] keys: {sorted(unknown)}")
+        if "structural_lambdas" not in section or "nodes" not in section:
+            raise ValueError("[sample] requires structural_lambdas and nodes")
+        lambdas = tuple(float(value) for value in section.pop("structural_lambdas"))
+        nodes = section.pop("nodes")
+        if nodes == "all":
+            nodes = None
+        elif isinstance(nodes, list) and nodes:
+            nodes = tuple(str(node) for node in nodes)
+            if len(set(nodes)) != len(nodes):
+                raise ValueError("duplicate [sample].nodes")
+        else:
+            raise ValueError('[sample].nodes must be a non-empty list or "all"')
+        if not lambdas or any(value < 0 for value in lambdas):
+            raise ValueError("[sample].structural_lambdas must be non-empty and >= 0")
+        if len({rate_label(value) for value in lambdas}) != len(lambdas):
+            raise ValueError("duplicate [sample].structural_lambdas")
+        settings = cls(structural_lambdas=lambdas, nodes=nodes, **section)
+        if settings.n_iter < 1 or settings.chains_per_node < 1 or settings.checkpoint_every < 1:
+            raise ValueError("[sample] iteration, chain and checkpoint counts must be positive")
+        if settings.mcmc_temperature <= 0 or not 0 < settings.probability_floor < 1:
+            raise ValueError("[sample] temperature or probability floor is outside its valid range")
+        if not 0 <= settings.site_uncertainty_mixture <= 1 or settings.site_weight_power <= 0:
+            raise ValueError("[sample] site-weight parameters are outside their valid ranges")
+        if settings.start_mode not in ("aa_map", "aa_sample"):
+            raise ValueError("[sample].start_mode must be aa_map or aa_sample")
+        return settings
+
+
 @dataclass
 class Grid:
     name: str
@@ -78,6 +140,7 @@ class Grid:
     max_attempts_per_cell: int
     cells: list[CellSpec]
     asr: dict
+    sample: SampleSettings | None = field(default=None)
 
     def __post_init__(self) -> None:
         self.tree = load_tree(self.tree_path)
@@ -167,6 +230,7 @@ def load_grid(path: Path, outdir: Path | None = None) -> Grid:
         max_attempts_per_cell=int(section.get("max_attempts_per_cell", 100_000)),
         cells=specs,
         asr=asr,
+        sample=SampleSettings.from_toml(config["sample"]) if "sample" in config else None,
     )
 
 
@@ -220,6 +284,25 @@ def plan(grid: Grid) -> dict:
             "bound on batched passes for that cell regardless of GPU batch size."
         ),
     }
+    if grid.sample is not None:
+        settings = grid.sample
+        if settings.nodes is not None:
+            node_count = len(settings.nodes)
+        else:  # IQ-TREE reports the unrooted tree: a degree-two root is not a node.
+            node_count = len(grid.tree.get_nonterminals()) - (len(grid.tree.root.clades) == 2)
+        chains = len(grid.cells) * len(settings.structural_lambdas) * node_count * settings.chains_per_node
+        payload["sample"] = {
+            "structural_lambdas": list(settings.structural_lambdas),
+            "nodes_per_cell": node_count,
+            "chains_per_node": settings.chains_per_node,
+            "total_chains": chains,
+            "total_chain_steps": chains * settings.n_iter,
+            "sequential_prostt5_steps": settings.n_iter,
+            "note": (
+                "every chain step needs one ProstT5 encoding; all chains of a process share "
+                "each step's batch, but the n_iter steps themselves are sequential."
+            ),
+        }
     write_json(grid.outdir / "grid_plan.json", payload)
     return payload
 
@@ -506,6 +589,153 @@ def run_asr(grid: Grid, *, specs: list[CellSpec], executable: str, workers: int)
     return run_jobs(jobs, executable, workers)
 
 
+# ------------------------------------------------------------------- sample
+
+
+def sample_dir(grid: Grid, spec: CellSpec, structural_lambda: float) -> Path:
+    return grid.cell_dir(spec) / "sample" / f"lambda_{rate_label(structural_lambda)}"
+
+
+def sample_run_complete(path: Path) -> bool:
+    manifest = path / "run_manifest.json"
+    return manifest.exists() and json.loads(manifest.read_text())["status"] == "complete"
+
+
+def sample_complete(grid: Grid, spec: CellSpec) -> bool:
+    return grid.sample is not None and all(
+        sample_run_complete(sample_dir(grid, spec, value))
+        for value in grid.sample.structural_lambdas
+    )
+
+
+def three_di_node_map(asr_dir: Path) -> dict[str, str]:
+    """AA-tree internal node -> 3Di-tree internal node with the same tip partition."""
+    aa = vertex_signatures(Phylo.read(str(asr_dir / "aa.treefile"), "newick"), suppress_root=False)
+    three_di = vertex_signatures(
+        Phylo.read(str(asr_dir / "3di.treefile"), "newick"), suppress_root=False
+    )
+    return {aa[signature]: three_di[signature] for signature in aa if signature in three_di}
+
+
+def prepare_sample(grid: Grid, *, specs: list[CellSpec], model: str) -> list[sampling.SamplerRun]:
+    """Validate inputs and build the incomplete sampler runs of ``specs`` (no model load).
+
+    Reads only ASR outputs; ground truth is never opened.
+    """
+    settings = grid.sample
+    if settings is None:
+        raise ValueError(f"{grid.config_path} has no [sample] section")
+    runs = []
+    for spec in specs:
+        pending = [
+            value for value in settings.structural_lambdas
+            if not sample_run_complete(sample_dir(grid, spec, value))
+        ]
+        if not pending:
+            continue
+        if not asr_complete(grid, spec):
+            raise RuntimeError(f"ASR incomplete for {spec.label}")
+        asr_dir = grid.cell_dir(spec) / "asr"
+        aa = load_state(asr_dir / "aa.state", settings.probability_floor)
+        three_di_states = load_state(asr_dir / "3di.state", settings.probability_floor)
+        node_map = three_di_node_map(asr_dir)
+        nodes = list(settings.nodes) if settings.nodes else sorted(aa, key=node_sort_key)
+        three_di = OrderedDict()
+        for node in nodes:
+            if node not in aa:
+                raise ValueError(f"{spec.label}: {node} is absent from asr/aa.state")
+            if node not in node_map or node_map[node] not in three_di_states:
+                raise ValueError(f"{spec.label}: no 3Di posterior shares {node}'s topology")
+            three_di[node] = three_di_states[node_map[node]]
+            if aa[node].probabilities.shape[0] != three_di[node].probabilities.shape[0]:
+                raise ValueError(f"{spec.label}: AA and 3Di lengths differ for {node}")
+        site_proposals = {
+            node: sampling.uncertainty_site_weights(
+                aa[node], settings.site_uncertainty_mixture, settings.site_weight_power
+            )
+            for node in nodes
+        }
+        provenance = {
+            "grid": grid.name,
+            "cell": spec.label,
+            "aa_state_sha256": sha256(asr_dir / "aa.state"),
+            "three_di_state_sha256": sha256(asr_dir / "3di.state"),
+            "three_di_nodes": {node: node_map[node] for node in nodes},
+        }
+        for value in pending:
+            arguments = argparse.Namespace(
+                condition=f"{spec.label}__lambda_{rate_label(value)}",
+                n_iter=settings.n_iter,
+                chains_per_node=settings.chains_per_node,
+                mcmc_temperature=settings.mcmc_temperature,
+                structural_lambda=value,
+                site_uncertainty_mixture=settings.site_uncertainty_mixture,
+                site_weight_power=settings.site_weight_power,
+                seed=spec.seed if settings.seed is None else settings.seed,
+                start_mode=settings.start_mode,
+                probability_floor=settings.probability_floor,
+                model=model,
+                max_chunk_aa=settings.max_chunk_aa,
+            )
+            runs.append(
+                sampling.SamplerRun(
+                    output=sample_dir(grid, spec, value),
+                    config={**sampling.config_payload(arguments, nodes), **provenance},
+                    nodes=nodes,
+                    aa=aa,
+                    three_di=three_di,
+                    site_proposals=site_proposals,
+                    checkpoint_every=settings.checkpoint_every,
+                )
+            )
+    return runs
+
+
+class SharedEncoder:
+    """Encode each distinct sequence once per step and log per-step timing.
+
+    Runs of one cell share starts and RNG streams, so their proposals coincide
+    until their accept/reject decisions first differ.
+    """
+
+    def __init__(self, encode, timings: Path):
+        self.encode = encode
+        self.timings = timings
+        if not timings.exists():
+            timings.parent.mkdir(parents=True, exist_ok=True)
+            timings.write_text("sequences\tunique_sequences\tencode_seconds\n", encoding="utf-8")
+
+    def __call__(self, sequences: list[str]) -> list[str]:
+        unique = list(dict.fromkeys(sequences))
+        started = time.perf_counter()
+        structures = dict(zip(unique, self.encode(unique)))
+        seconds = time.perf_counter() - started
+        with self.timings.open("a", encoding="utf-8") as handle:
+            handle.write(f"{len(sequences)}\t{len(unique)}\t{seconds:.6f}\n")
+        return [structures[sequence] for sequence in sequences]
+
+
+def run_sample(
+    grid: Grid,
+    encode,
+    *,
+    specs: list[CellSpec],
+    model: str,
+    resolved_model: str,
+    shard_name: str,
+    resume: bool,
+) -> list[str]:
+    """Advance every incomplete (cell, lambda) run together; returns their directories."""
+    runs = prepare_sample(grid, specs=specs, model=model)
+    if not runs:
+        return []
+    for run in runs:
+        run.write_site_proposals()
+    encoder = SharedEncoder(encode, grid.outdir / f"sample_timings_{shard_name}.tsv")
+    sampling.advance_runs(runs, encoder, resolved_model, resume=resume, desc="Joint ASR grid")
+    return [str(run.output) for run in runs]
+
+
 # ----------------------------------------------------------------- evaluate
 
 
@@ -541,9 +771,80 @@ def evaluate_reconstruction(
     return dataset_rows, node_rows, mapping_rows
 
 
+def mismatches(left: str, right: str) -> int:
+    if len(left) != len(right):
+        raise ValueError("sequence lengths differ")
+    return sum(a != b for a, b in zip(left, right))
+
+
+def evaluate_samples(grid: Grid, spec: CellSpec) -> list[dict]:
+    """Per (lambda, node): errors of the AA-MAP start and the best-scoring visited state.
+
+    Runs are found on disk; partial runs are reported with their status.
+    """
+    run_root = grid.cell_dir(spec)
+    runs = sorted((run_root / "sample").glob("lambda_*/run_manifest.json"))
+    if not runs:
+        return []
+    mapping = {
+        row["inferred_node"]: row["ground_truth_node"]
+        for row in topology_mapping(
+            load_tree(grid.tree_path), Phylo.read(str(run_root / "asr" / "aa.treefile"), "newick")
+        )
+    }
+    truth_aa = read_ordered_fasta(run_root / "simulation" / "ground_truth_nodes.fasta")
+    truth_3di = read_ordered_fasta(run_root / "truth" / "ground_truth_nodes_3di.fasta")
+    rows = []
+    for manifest_path in runs:
+        manifest = json.loads(manifest_path.read_text())
+        directory = manifest_path.parent
+        config = manifest["configuration"]
+        start_aa = read_ordered_fasta(directory / "aa_map_start_aa.fasta")
+        start_3di = read_ordered_fasta(directory / "aa_map_start_3di.fasta")
+        best_aa = read_ordered_fasta(directory / "joint_asr_best_aa.fasta")
+        best_3di = read_ordered_fasta(directory / "joint_asr_best_3di.fasta")
+        with (directory / "chain_summary.tsv").open(encoding="utf-8") as handle:
+            chains = list(csv.DictReader(handle, delimiter="\t"))
+        for node in config["nodes"]:
+            truth = mapping.get(node, "")
+            node_chains = [row for row in chains if row["node"] == node]
+            row = {
+                "condition": spec.label,
+                "mutation_scale": spec.mutation_scale,
+                "tau": spec.proposal_temperature,
+                "seed": spec.seed,
+                "structural_lambda": config["structural_lambda"],
+                "status": manifest["status"],
+                "completed_steps": manifest["completed_steps"],
+                "inferred_node": node,
+                "ground_truth_node": truth,
+                "sites": len(best_aa[node]),
+                "mean_acceptance_rate": sum(
+                    float(chain["acceptance_rate"]) for chain in node_chains
+                ) / len(node_chains),
+            }
+            if truth:
+                row.update(
+                    start_aa_errors=mismatches(start_aa[node], truth_aa[truth]),
+                    best_aa_errors=mismatches(best_aa[node], truth_aa[truth]),
+                    start_3di_errors=mismatches(start_3di[node], truth_3di[truth]),
+                    best_3di_errors=mismatches(best_3di[node], truth_3di[truth]),
+                )
+                row["delta_aa_errors"] = row["best_aa_errors"] - row["start_aa_errors"]
+            rows.append(row)
+    return rows
+
+
+SAMPLE_COLUMNS = [
+    "condition", "mutation_scale", "tau", "seed", "structural_lambda", "status",
+    "completed_steps", "inferred_node", "ground_truth_node", "sites", "mean_acceptance_rate",
+    "start_aa_errors", "best_aa_errors", "delta_aa_errors", "start_3di_errors", "best_3di_errors",
+]
+
+
 def run_evaluate(grid: Grid, *, specs: list[CellSpec], outdir: Path) -> list[dict]:
     outdir.mkdir(parents=True, exist_ok=True)
-    dataset_rows, node_rows, mapping_rows = [], [], []
+    dataset_rows, node_rows, mapping_rows, sample_rows = [], [], [], []
     with (outdir / "site_probabilities.tsv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=SITE_COLUMNS, delimiter="\t")
         writer.writeheader()
@@ -568,10 +869,13 @@ def run_evaluate(grid: Grid, *, specs: list[CellSpec], outdir: Path) -> list[dic
             dataset_rows.extend(datasets)
             node_rows.extend(nodes)
             mapping_rows.extend(mappings)
+            sample_rows.extend(evaluate_samples(grid, spec))
     if dataset_rows:
         write_tsv(outdir / "dataset_summary.tsv", dataset_rows)
         write_tsv(outdir / "node_summary.tsv", node_rows)
         write_tsv(outdir / "node_mapping.tsv", mapping_rows)
+    if sample_rows:
+        write_tsv(outdir / "sample_summary.tsv", sample_rows, SAMPLE_COLUMNS)
     return dataset_rows
 
 
@@ -641,10 +945,43 @@ def command_encode(args, grid: Grid) -> None:
     print(f"3Di encoding complete; wrote {len(written)} cells", flush=True)
 
 
+def command_sample(args, grid: Grid) -> None:
+    from structure_asr.prostt5 import load_prostt5
+
+    specs = grid.shard(args.shard)
+    runs = prepare_sample(grid, specs=specs, model=args.model)
+    if args.validate_only:
+        chains = sum(len(run.nodes) * int(run.config["chains_per_node"]) for run in runs)
+        print(f"{len(specs)} cells in shard; {len(runs)} incomplete (cell, lambda) runs; "
+              f"{chains} chains; inputs valid", flush=True)
+        return
+    if not runs:
+        print("Sampling already complete for this shard", flush=True)
+        return
+    torch_module, tokenizer, model, device, resolved = load_prostt5(
+        args.model, args.device, args.dtype
+    )
+
+    def encode(sequences: list[str]) -> list[str]:
+        return sampling.encode_sequences(
+            sequences, tokenizer, model, device, torch_module,
+            args.model_batch_size, grid.sample.max_chunk_aa,
+        )
+
+    written = run_sample(
+        grid, encode, specs=specs, model=args.model, resolved_model=str(resolved),
+        shard_name=(args.shard or "0/1").replace("/", "_of_"), resume=args.resume,
+    )
+    print(f"Sampling complete; wrote {len(written)} runs", flush=True)
+
+
 def command_status(_args, grid: Grid) -> None:
-    print("cell\tforward\tencode\tasr")
+    stages = ["forward", "encode", "asr"] + (["sample"] if grid.sample is not None else [])
+    print("cell\t" + "\t".join(stages))
     for spec in grid.cells:
         flags = [forward_complete(grid, spec), encode_complete(grid, spec), asr_complete(grid, spec)]
+        if grid.sample is not None:
+            flags.append(sample_complete(grid, spec))
         print(spec.label + "\t" + "\t".join("yes" if flag else "-" for flag in flags))
 
 
@@ -676,6 +1013,13 @@ def build_parser() -> argparse.ArgumentParser:
     asr = grid_command("asr", "IQ-TREE marginal ASR on the fixed topology (CPU)")
     asr.add_argument("--iqtree", help="IQ-TREE executable (default: $ASR_IQTREE or [asr].iqtree)")
     asr.add_argument("--jobs", type=int, default=os.cpu_count() or 1)
+    sample = grid_command("sample", "joint AA/3Di MH sampling per cell and lambda (GPU)")
+    sample.add_argument("--model", default="Rostlab/ProstT5")
+    sample.add_argument("--device", default="cuda")
+    sample.add_argument("--dtype", choices=["float16", "bfloat16", "float32"], default="float16")
+    sample.add_argument("--model-batch-size", type=int, default=32)
+    sample.add_argument("--resume", action="store_true")
+    sample.add_argument("--validate-only", action="store_true")
     evaluate = grid_command("evaluate", "post-inference comparison with truth (CPU)")
     evaluate.add_argument("--evaluation-dir", type=Path)
     grid_command("status", "per-cell stage completion")
@@ -752,6 +1096,10 @@ def main() -> None:
                   f">= {cell['approx_sequential_steps']:,} sequential passes")
         print(f"{len(payload['cells'])} cells, {payload['total_planned_attempts']:,} ESM2 calls; "
               f"wrote {grid.outdir / 'grid_plan.json'}")
+        if "sample" in payload:
+            sample = payload["sample"]
+            print(f"sample: {sample['total_chains']:,} chains, {sample['total_chain_steps']:,} "
+                  f"ProstT5 chain-steps in {sample['sequential_prostt5_steps']:,} sequential steps")
     elif args.command == "forward":
         command_forward(args, grid)
     elif args.command == "encode":
@@ -759,6 +1107,8 @@ def main() -> None:
     elif args.command == "asr":
         run_asr(grid, specs=grid.shard(args.shard),
                 executable=default_iqtree(args.iqtree, grid.asr), workers=args.jobs)
+    elif args.command == "sample":
+        command_sample(args, grid)
     elif args.command == "evaluate":
         rows = run_evaluate(grid, specs=grid.shard(args.shard),
                             outdir=args.evaluation_dir or grid.outdir / "evaluation")

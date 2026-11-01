@@ -24,7 +24,7 @@ loading ESM2/ProstT5 and without running IQ-TREE.
 - The package wheel builds offline with `--no-deps --no-build-isolation`.
   The full checkout, rather than the wheel alone, supplies example data.
 
-- Grid stages (11 tests in `tests/test_grid.py`, 38 main-suite tests total):
+- Grid stages (13 tests in `tests/test_grid.py`, 40 main-suite tests total):
   - With a deterministic fake predictor, batched multi-lane forward simulation
     reproduces serial `ForwardSimulator` nodes, node order, events and scores
     for batch sizes 1/3/64.
@@ -32,6 +32,14 @@ loading ESM2/ProstT5 and without running IQ-TREE.
     one process. Plan counts equal `exact_planned_attempts` and the cap is enforced.
   - The ASR stage, run with an IQ-TREE stub, succeeds with every truth file
     deleted. It skips finished jobs and refuses outputs made from changed inputs.
+  - The sample stage, run on stub-ASR output with truth deleted, uses a 3Di tree
+    whose node names differ from the AA tree's. The pairing is recovered by topology.
+    After an interruption it refuses to restart without `--resume`, then resumes.
+    Every (cell, λ) run's trace, chain summary, final/best FASTAs and site
+    weights equal a standalone `structure_asr.sampling` run (fake encoder).
+    Shared starts are encoded once; `sample_summary.tsv` maps every node.
+  - `[sample]` validation rejects unknown keys, duplicate or negative λ,
+    empty node lists and invalid start modes; `plan` counts chains and chain-steps.
   - The opt-in real-IQ-TREE test runs only when `ASR_IQTREE` is set. It passes
     with IQ-TREE 3.1.4 (official macOS arm64 release, sha256-verified).
 - `asr-grid plan grids/example.toml` reproduces the historical μ=1 (4,777) and
@@ -49,6 +57,11 @@ loading ESM2/ProstT5 and without running IQ-TREE.
   - This is consistent with, but does not prove, the historical runs having
     used ModelFinder for AA and Q.3Di.AF for 3Di. Outputs are in
     `results/iqtree_local/`. Runtime was about 1 minute per condition on 4 threads.
+
+- 2026-11-01: refactoring `structure_asr.sampling.main` onto the shared
+  `SamplerRun`/`advance_runs` code left its outputs byte-identical to the
+  previous commit (fake encoder, 25 steps; two nodes x two chains at λ=.05 and
+  model batch 3; `aa_sample` start at λ=0, seed 11), apart from manifest timestamps.
 
 These checks do not establish GPU performance, new model compatibility, sampler
 convergence, improved AA recovery or a completed new-data ASR benchmark.
