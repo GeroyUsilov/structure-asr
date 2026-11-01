@@ -1,3 +1,5 @@
+> Archived 2026-11-01. This was written for the original handoff; current conventions are in `AGENTS.md`.
+
 # Handoff for a fresh agent
 
 ## Project question

@@ -3,17 +3,21 @@
 Forward protein evolution with saved ground truth, AA/3Di ancestral-sequence
 sampling, and reproducible examples from the EF-Tu and Glu/Gln project.
 
-**New agent: read [HANDOFF](docs/HANDOFF.md) first.**
+Working conventions (scientific rules, git, experiment records): [AGENTS.md](AGENTS.md).
 
 ## Start locally — no GPU or model download
 
 Python 3.11+ is required (`tomllib` is used). From this repository:
 
 ```bash
-python -m pip install -e '.[analysis]'
-python -m unittest discover -s tests -v
-bash scripts/reproduce_examples.sh
+python -m venv .venv && .venv/bin/python -m pip install -e '.[analysis]'
+bash scripts/check.sh          # CPU tests + example replay (--quick: tests only)
 ```
+
+If NumPy, Biopython, tqdm, pandas and matplotlib are already installed (e.g. in
+conda), `python -m venv --system-site-packages .venv` followed by
+`.venv/bin/python -m pip install --no-deps --no-build-isolation -e .` avoids
+any download. `scripts/check.sh` uses `.venv/bin/python` when it exists.
 
 The replay writes tables/figures under `results/` using bundled sequences,
 posteriors, and completed-chain checkpoints. It does not generate new proteins.
@@ -32,7 +36,9 @@ environment with NumPy, Biopython, tqdm, pandas and matplotlib installed.
 | `src/structure_asr/legacy_sampling.py` | Historical equal-weight sampler; separately named |
 | `src/structure_asr/evaluation.py`, `score_placement.py` | Topology matching, truth scores and score distributions |
 | `src/structure_asr/grid.py`, `batched_forward.py`, `iqtree.py` | Multi-regime grids: batched ESM2 evolution, 3Di encoding, fixed-topology IQ-TREE ASR, batched joint sampling over λ, evaluation |
-| `grids/` | Grid definitions (TOML) |
+| `grids/` | Grid definitions (TOML); `calibration.toml` is the GPU timing run |
+| `experiments/` | Small committed records of real runs (configs, manifests, summaries, notes) |
+| `scripts/` | Stage wrappers, `check.sh` (pre-commit check), `record_run.sh` |
 | `examples/ef_tu/` | Tree, root-source alignment, nine tip datasets, two completed ASR cases |
 | `examples/glugln/` | Corrected AA Node168 / 3Di Node16 inputs, entropy and logo examples |
 | `docs/figures/` | Selected historical result figures |
@@ -43,10 +49,12 @@ experimental OFS code. Active implementations have the clearer names above.
 
 ## RunPod workflows
 
-Use a CUDA PyTorch environment. Install dependencies there, not on the local
-machine for inference:
+Use a CUDA PyTorch environment. Clone onto the network volume and check out the
+commit you intend to run (it is recorded in `grid_plan.json`):
 
 ```bash
+git clone https://github.com/GeroyUsilov/structure-asr.git && cd structure-asr
+git checkout <commit-or-branch>
 python -m pip install -r requirements-gpu.txt
 python -m pip install -e '.[analysis]'
 ```
@@ -93,13 +101,15 @@ equivalent to AA reconstruction improvement.
 
 The workflows are separate stages. `asr-grid` adds a documented fixed-topology
 IQ-TREE stage for new simulations. The historical posteriors in `examples/`
-predate it and have no recorded IQ-TREE command. This is project context for a
-fresh session, not a queue of previous requests to continue.
+predate it and have no recorded IQ-TREE command. New runs are recorded under
+[experiments/](experiments/README.md).
 
 - [Scientific methods and caveats](docs/METHODS.md)
 - [Experiment inventory and findings](docs/EXPERIMENTS.md)
-- [Original-file provenance](docs/PROVENANCE.md)
+- [Original-file provenance](docs/archive/PROVENANCE.md) and the original
+  [handoff notes](docs/archive/HANDOFF.md)
 - [Validation and known limitations](docs/VALIDATION.md)
 
-Git: `main` is the curated import; `refactor/documented-handoff` is the cleanup.
-There is no configured remote. Source files on the Desktop were left unchanged.
+Git: `main` is the trunk (private GitHub remote); feature work happens on short
+branches. The first commit is the curated import of the Desktop originals, which
+were left unchanged.

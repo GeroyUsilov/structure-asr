@@ -22,6 +22,7 @@ import csv
 import json
 import math
 import os
+import subprocess
 import time
 import tomllib
 from collections import OrderedDict
@@ -244,6 +245,19 @@ def write_json(path: Path, payload: dict) -> None:
 # --------------------------------------------------------------------- plan
 
 
+def git_revision() -> str:
+    """Commit of this checkout, suffixed ``-dirty`` for uncommitted changes; "" if unknown."""
+    here = Path(__file__).resolve().parent
+    try:
+        commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=here, capture_output=True,
+                                text=True, check=True).stdout.strip()
+        dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=here,
+                               capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return ""
+    return commit + ("-dirty" if dirty else "")
+
+
 def plan(grid: Grid) -> dict:
     length = len(grid.root_sequence)
     deepest = max(
@@ -272,6 +286,7 @@ def plan(grid: Grid) -> dict:
         "created_utc": datetime.now(timezone.utc).isoformat(),
         "grid": grid.name,
         "config": str(grid.config_path),
+        "git_commit": git_revision(),
         "method": "exact random-site single-mask ESM2 Gibbs generator, batched across edges and cells",
         "model_name": grid.model_name,
         "dtype": grid.dtype,

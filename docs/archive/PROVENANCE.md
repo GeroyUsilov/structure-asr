@@ -1,3 +1,5 @@
+> Archived 2026-11-01. This was written for the original handoff; current conventions are in `AGENTS.md`.
+
 # Import provenance
 
 Imported 2026-10-28. The source directories were not Git repositories.
