@@ -80,15 +80,52 @@ is a separate command, resumable, and skips completed cells:
 
 Cells live in `<outdir>/mu_<r>__tau_<t>__seed_<s>/`. `forward` batches one
 masked ESM2 pass over up to `--max-batch` edges drawn from all cells (see
-METHODS §6). `--shard i/n` splits cells round-robin across GPUs or pods that
-share a network volume; shards write disjoint directories. `plan` reports a
+METHODS §6). `--shard i/n` splits cells round-robin across GPUs or pods;
+shards write disjoint directories, so their outputs merge by copying. `plan` reports a
 per-cell lower bound on sequential passes (μ·L·deepest root-to-tip length), which
 no batch size can beat. Use it with `batch_timings_*.tsv` to size runs.
 
-RunPod recipe:
+### Running a grid on RunPod (`scripts/runpod/fleet.py`)
+
+One pod per shard. Each pod is self-contained (no network volume, so any
+datacenter and Community Cloud work): it receives a git bundle of the exact
+committed HEAD, runs `scripts/runpod/bootstrap.sh` (venv over the image's
+CUDA torch, ESM2 and ProstT5 weights into `/workspace/hf`, Q.3Di.AF, IQ-TREE
+3.1.4 with sha256 check), then `scripts/runpod/run_shard.sh`
+(forward → encode → asr → sample for its cells, each resumable). Outputs are
+rsynced to `results/runpod/<run>/grid/`; `evaluate` runs locally.
+
+One-time local setup: install `runpodctl`, configure its API key yourself
+(never in a file in this repository), and register your SSH public key
+(`runpodctl ssh add-key --key-file ~/.ssh/id_ed25519.pub`).
 
 ```bash
-# Network volume holds the checkout, HF_HOME, .cache/ and results/.
+python scripts/runpod/fleet.py launch cal-1 --grid grids/calibration.toml --pods 1 --dry-run
+python scripts/runpod/fleet.py launch cal-1 --grid grids/calibration.toml --pods 1
+python scripts/runpod/fleet.py sync cal-1 --every 10 --terminate-done --max-hours 3
+python scripts/runpod/fleet.py status cal-1          # pods, hours, ~cost, current stage
+python scripts/runpod/fleet.py logs cal-1 --shard 0
+bash scripts/grid.sh evaluate grids/calibration.toml --outdir results/runpod/cal-1/grid
+bash scripts/record_run.sh grids/calibration.toml 2026-11-02_cal-1 --outdir results/runpod/cal-1/grid
+```
+
+- `launch` refuses uncommitted changes and asks for confirmation. It tries GPU
+  types from cheapest-preferred (`--gpu-types`), Community then Secure Cloud,
+  skipping types `runpodctl gpu list` reports unavailable, and deletes any pod
+  that offers no direct-TCP SSH (rsync needs it) within `--ssh-timeout`.
+- `sync --terminate-done` deletes a pod once its `DONE` marker has been synced.
+  A `FAILED` pod is kept for inspection; terminate it after reading its log.
+  `--max-hours` deletes pods older than the limit (after syncing).
+- `relaunch RUN --shard i` replaces a lost pod: it pushes the synced output back
+  and the stages resume from their checkpoints.
+- Pods bill until deleted. `status` lists anything still running;
+  `terminate RUN` deletes all of a run's pods.
+- `--pods` should not exceed the number of cells. Cells are rate-major, so
+  round-robin shards get one cell per μ when the pod count divides the cells per μ.
+
+Manual single-pod equivalent (any CUDA machine with the checkout):
+
+```bash
 bash scripts/grid.sh plan grids/my_grid.toml
 bash scripts/grid.sh forward grids/my_grid.toml --validate-only
 bash scripts/grid.sh forward grids/my_grid.toml --max-batch 64 [--shard 0/2]

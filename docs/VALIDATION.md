@@ -24,7 +24,8 @@ loading ESM2/ProstT5 and without running IQ-TREE.
 - The package wheel builds offline with `--no-deps --no-build-isolation`.
   The full checkout, rather than the wheel alone, supplies example data.
 
-- Grid stages (13 tests in `tests/test_grid.py`, 40 main-suite tests total):
+- Grid stages (13 tests in `tests/test_grid.py`; 44 main-suite tests total with
+  the 4 fleet tests below):
   - With a deterministic fake predictor, batched multi-lane forward simulation
     reproduces serial `ForwardSimulator` nodes, node order, events and scores
     for batch sizes 1/3/64.
@@ -62,6 +63,13 @@ loading ESM2/ProstT5 and without running IQ-TREE.
   `SamplerRun`/`advance_runs` code left its outputs byte-identical to the
   previous commit (fake encoder, 25 steps; two nodes x two chains at λ=.05 and
   model batch 3; `aa_sample` start at λ=0, seed 11), apart from manifest timestamps.
+
+- RunPod fleet tooling (`tests/test_fleet.py`, fake runner, no RunPod calls):
+  SSH-info parsing rejects the scp-incapable proxy; GPU/cloud fallback order
+  skips unavailable types; the remote job is valid shell for the right shard;
+  launch → sync deletes pods only after their `DONE` marker syncs. The shell
+  scripts are syntax-checked only: bootstrap and run_shard have not yet run on
+  a pod, and `runpodctl` output formats are assumed until the first launch.
 
 These checks do not establish GPU performance, new model compatibility, sampler
 convergence, improved AA recovery or a completed new-data ASR benchmark.

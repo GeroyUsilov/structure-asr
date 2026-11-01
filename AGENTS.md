@@ -42,8 +42,10 @@ before changing an algorithm or a workflow. `docs/archive/` is history.
 
 - `main` is the trunk. Do feature work on short branches (`feat/…`, `fix/…`,
   `chore/…`) and merge when `scripts/check.sh` passes. Commit only when asked.
-- The remote is a private GitHub repo. RunPod pods clone it and check out an
-  exact commit; `grid_plan.json` records that commit.
+- The remote is a private GitHub repo. RunPod grids run through
+  `scripts/runpod/fleet.py`: self-contained pods (no network volume) get a git
+  bundle of the committed HEAD; `grid_plan.json` records the commit. Confirm
+  with the user before launching pods, and make sure none are left running.
 - Each real run gets a small committed record in `experiments/YYYY-MM-DD_<name>/`
   (`scripts/record_run.sh`, see `experiments/README.md`). Raw outputs stay on
   the RunPod volume.

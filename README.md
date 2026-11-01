@@ -38,7 +38,7 @@ environment with NumPy, Biopython, tqdm, pandas and matplotlib installed.
 | `src/structure_asr/grid.py`, `batched_forward.py`, `iqtree.py` | Multi-regime grids: batched ESM2 evolution, 3Di encoding, fixed-topology IQ-TREE ASR, batched joint sampling over λ, evaluation |
 | `grids/` | Grid definitions (TOML); `calibration.toml` is the GPU timing run |
 | `experiments/` | Small committed records of real runs (configs, manifests, summaries, notes) |
-| `scripts/` | Stage wrappers, `check.sh` (pre-commit check), `record_run.sh` |
+| `scripts/` | Stage wrappers, `check.sh` (pre-commit check), `record_run.sh`; `runpod/` launches and syncs GPU pods |
 | `examples/ef_tu/` | Tree, root-source alignment, nine tip datasets, two completed ASR cases |
 | `examples/glugln/` | Corrected AA Node168 / 3Di Node16 inputs, entropy and logo examples |
 | `docs/figures/` | Selected historical result figures |
@@ -49,8 +49,10 @@ experimental OFS code. Active implementations have the clearer names above.
 
 ## RunPod workflows
 
-Use a CUDA PyTorch environment. Clone onto the network volume and check out the
-commit you intend to run (it is recorded in `grid_plan.json`):
+Grids run on RunPod through `scripts/runpod/fleet.py`, one self-contained pod
+per shard (WORKFLOWS "Running a grid on RunPod"). For a manual pod, use a CUDA
+PyTorch environment and check out the commit you intend to run (it is recorded
+in `grid_plan.json`):
 
 ```bash
 git clone https://github.com/GeroyUsilov/structure-asr.git && cd structure-asr
