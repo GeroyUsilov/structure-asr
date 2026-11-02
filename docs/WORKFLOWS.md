@@ -112,7 +112,11 @@ bash scripts/record_run.sh grids/calibration.toml 2026-11-02_cal-1 --outdir resu
   types from cheapest-preferred (`--gpu-types`), Community then Secure Cloud,
   skipping types `runpodctl gpu list` reports unavailable, and deletes any pod
   that offers no direct-TCP SSH (rsync needs it) within `--ssh-timeout`.
-- `sync --terminate-done` deletes a pod once its `DONE` marker has been synced.
+- `sync --terminate-done` deletes a pod only when its `DONE` marker was synced
+  and the grid outputs copied cleanly in the same pass (status is pulled before
+  outputs). A failed copy is printed and the pod is kept for the next pass. The
+  loop waits by wall clock, so it syncs right away after the Mac wakes; while the
+  Mac sleeps, finished pods keep billing.
   A `FAILED` pod is kept for inspection; terminate it after reading its log.
   `--max-hours` deletes pods older than the limit (after syncing).
 - `relaunch RUN --shard i` replaces a lost pod: it pushes the synced output back

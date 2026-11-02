@@ -24,8 +24,9 @@ GPU_LIST = json.dumps([
 class FakeRunner(fleet.Runner):
     """Answers runpodctl/ssh/rsync like RunPod would; records every command."""
 
-    def __init__(self, local_status: Path | None = None, out_of_stock=()):
+    def __init__(self, local_status: Path | None = None, out_of_stock=(), fail_outputs=False):
         super().__init__(dry_run=False)
+        self.fail_outputs = fail_outputs
         self.commands = []
         self.local_status = local_status
         self.out_of_stock = set(out_of_stock)
@@ -51,6 +52,8 @@ class FakeRunner(fleet.Runner):
                                        "ssh_command": "ssh -i k root@203.0.113.7 -p 10022"}})
         if command[0] == "ssh" and command[-1] == "echo ready":
             return "ready\n"
+        if command[0] == "rsync" and "/results/" in command[-2] and self.fail_outputs:
+            raise RuntimeError("rsync failed (12): connection unexpectedly closed")
         if command[0] == "rsync" and command[-2].endswith(":/workspace/status/") and self.local_status:
             Path(command[-1]).mkdir(parents=True, exist_ok=True)
             (Path(command[-1]) / "DONE").write_text("2026-11-01T00:00:00Z\n")
@@ -118,6 +121,10 @@ class FleetTests(unittest.TestCase):
             self.assertTrue(any("run_shard.sh grids/calibration.toml 1/2" in r for r in remote))
             self.assertTrue(all("-i" in c for c in runner.commands if c[0] == "ssh"))
 
+            runner.fail_outputs = True  # DONE synced but outputs did not: keep the pods.
+            fleet.main(["--ssh-key", "/k", "sync", "cal", "--terminate-done"], runner=runner)
+            self.assertFalse([c for c in runner.commands if c[:3] == ["runpodctl", "pod", "delete"]])
+            runner.fail_outputs = False
             fleet.main(["--ssh-key", "/k", "sync", "cal", "--terminate-done"], runner=runner)
             deleted = [c[3] for c in runner.commands if c[:3] == ["runpodctl", "pod", "delete"]]
             self.assertEqual(sorted(deleted), ["pod1", "pod2"])

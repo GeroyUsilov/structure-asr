@@ -417,16 +417,29 @@ def pod_status(runner: Runner, pod: dict, key: str | None) -> str:
     return output.strip() or "bootstrapping (or unreachable)"
 
 
-def sync_pod(runner: Runner, state: dict, shard: str, pod: dict, key: str | None) -> None:
+def sync_pod(runner: Runner, state: dict, shard: str, pod: dict, key: str | None) -> bool:
+    """Pull status, then outputs, then logs. True only if the outputs copied cleanly.
+
+    Status comes first: a DONE marker seen here was written before the outputs
+    that follow were copied, so DONE plus a clean output copy means the local
+    copy is complete and the pod may be deleted.
+    """
     local = run_dir(state["run"])
     (local / "grid").mkdir(parents=True, exist_ok=True)
     (local / "pods" / f"shard_{shard}").mkdir(parents=True, exist_ok=True)
-    runner(rsync_command(pod, f"{remote(pod)}:{REMOTE_REPO}/{state['outdir']}/", f"{local / 'grid'}/", key),
-           check=False)
-    runner(rsync_command(pod, f"{remote(pod)}:{REMOTE_WORK}/logs/", f"{local / 'pods' / f'shard_{shard}'}/", key),
-           check=False)
-    runner(rsync_command(pod, f"{remote(pod)}:{REMOTE_WORK}/status/",
-                         f"{local / 'pods' / f'shard_{shard}' / 'status'}/", key, delete=True), check=False)
+
+    def pull(source: str, dest: str, delete: bool = False) -> bool:
+        try:
+            runner(rsync_command(pod, source, dest, key, delete=delete))
+            return True
+        except RuntimeError as error:
+            print(f"shard {shard}: sync failed: {error}", flush=True)
+            return False
+
+    pull(f"{remote(pod)}:{REMOTE_WORK}/status/", f"{local / 'pods' / f'shard_{shard}' / 'status'}/", delete=True)
+    outputs = pull(f"{remote(pod)}:{REMOTE_REPO}/{state['outdir']}/", f"{local / 'grid'}/")
+    pull(f"{remote(pod)}:{REMOTE_WORK}/logs/", f"{local / 'pods' / f'shard_{shard}'}/")
+    return outputs
 
 
 def hours_since(iso: str) -> float:
@@ -464,10 +477,13 @@ def command_sync(args, runner: Runner) -> None:
         state = load_state(args.run)
         active = {shard: pod for shard, pod in state["pods"].items() if not pod.get("terminated")}
         for shard, pod in sorted(active.items(), key=lambda item: int(item[0])):
-            sync_pod(runner, state, shard, pod, args.ssh_key)
+            outputs_copied = sync_pod(runner, state, shard, pod, args.ssh_key)
             status_dir = run_dir(args.run) / "pods" / f"shard_{shard}" / "status"
             if (status_dir / "DONE").exists() and args.terminate_done:
-                terminate(runner, state, shard, "done")
+                if outputs_copied:
+                    terminate(runner, state, shard, "done")
+                else:
+                    print(f"shard {shard}: DONE but outputs did not copy; keeping the pod", flush=True)
             elif (status_dir / "FAILED").exists():
                 print(f"shard {shard}: FAILED ({(status_dir / 'FAILED').read_text().strip()}); "
                       f"pod kept for inspection", flush=True)
@@ -483,7 +499,11 @@ def command_sync(args, runner: Runner) -> None:
         if failed and len(failed) == len(remaining):
             print("every remaining pod has FAILED; stopping the sync loop", flush=True)
             return
-        time.sleep(args.every * 60)
+        # Wait by wall clock: time.sleep stalls while the Mac sleeps, so a
+        # monotonic wait would delay the first sync after waking.
+        deadline = time.time() + args.every * 60
+        while time.time() < deadline:
+            time.sleep(min(30.0, max(0.0, deadline - time.time())))
 
 
 def command_logs(args, runner: Runner) -> None:
