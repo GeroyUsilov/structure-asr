@@ -67,9 +67,13 @@ loading ESM2/ProstT5 and without running IQ-TREE.
 - RunPod fleet tooling (`tests/test_fleet.py`, fake runner, no RunPod calls):
   SSH-info parsing rejects the scp-incapable proxy; GPU/cloud fallback order
   skips unavailable types; the remote job is valid shell for the right shard;
-  launch → sync deletes pods only after their `DONE` marker syncs. The shell
-  scripts are syntax-checked only: bootstrap and run_shard have not yet run on
-  a pod, and `runpodctl` output formats are assumed until the first launch.
+  launch → sync deletes pods only after their `DONE` marker syncs; `--attach`
+  adopts a running pod; the detached job string runs and returns at once.
+- First GPU run, 2026-11-02 (`experiments/2026-11-02_calibration-rtx4090/`):
+  bootstrap, forward, encode, asr and sample ran on an RTX 4090 pod via
+  `fleet.py`; evaluation ran locally (37/37 nodes, AA MAP 97.83%). ProstT5
+  greedy decoding costs ~19 s per batch of 32 at 22.4 GB peak memory; batch 64
+  does not fit in 24 GB. Larger GPUs are unmeasured.
 
 These checks do not establish GPU performance, new model compatibility, sampler
 convergence, improved AA recovery or a completed new-data ASR benchmark.

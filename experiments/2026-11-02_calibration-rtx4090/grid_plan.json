@@ -1,0 +1,41 @@
+{
+  "cells": [
+    {
+      "approx_sequential_steps": 734,
+      "label": "mu_1__tau_1p5__seed_731024",
+      "mutation_scale": 1.0,
+      "planned_attempts": 4777,
+      "proposal_temperature": 1.5,
+      "seed": 731024
+    }
+  ],
+  "config": "/workspace/structure-asr/grids/calibration.toml",
+  "created_utc": "2026-11-02T01:36:43.026511+00:00",
+  "dtype": "float16",
+  "git_commit": "fefe22632d7ff09376ee28ba55f760248a7ed52b",
+  "grid": "calibration",
+  "method": "exact random-site single-mask ESM2 Gibbs generator, batched across edges and cells",
+  "model_name": "facebook/esm2_t33_650M_UR50D",
+  "note": "approx_sequential_steps is mu*L*(deepest root-to-tip branch length): a lower bound on batched passes for that cell regardless of GPU batch size.",
+  "root": {
+    "length": 396,
+    "record": "gi|163840912|ref|YP_001625317.1|163840912"
+  },
+  "sample": {
+    "chains_per_node": 1,
+    "nodes_per_cell": 37,
+    "note": "every chain step needs one ProstT5 encoding; all chains of a process share each step's batch, but the n_iter steps themselves are sequential.",
+    "sequential_prostt5_steps": 20,
+    "structural_lambdas": [
+      0.02,
+      0.1
+    ],
+    "total_chain_steps": 1480,
+    "total_chains": 74
+  },
+  "total_planned_attempts": 4777,
+  "tree": {
+    "path": "/workspace/structure-asr/examples/ef_tu/reference/AB_eftu_rerooted.tre",
+    "sha256": "8e023f648c0455a09da367f222ced49b6d111136c69dfea39a3f24504ff421db"
+  }
+}

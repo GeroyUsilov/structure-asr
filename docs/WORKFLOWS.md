@@ -119,6 +119,9 @@ bash scripts/record_run.sh grids/calibration.toml 2026-11-02_cal-1 --outdir resu
   and the stages resume from their checkpoints.
 - Pods bill until deleted. `status` lists anything still running;
   `terminate RUN` deletes all of a run's pods.
+- ProstT5 batch size is limited by GPU memory (~0.4 GB per sequence; batch 32
+  peaks at 22.4 GB). `scripts/runpod/bench_prostt5.py` times batch sizes on a
+  pod. See `experiments/2026-11-02_calibration-rtx4090/NOTES.md` for measured costs.
 - `--pods` should not exceed the number of cells. Cells are rate-major, so
   round-robin shards get one cell per μ when the pod count divides the cells per μ.
 

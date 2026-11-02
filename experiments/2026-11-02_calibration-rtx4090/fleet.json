@@ -1,0 +1,84 @@
+{
+  "candidates": [
+    [
+      "NVIDIA GeForce RTX 3090",
+      "COMMUNITY",
+      0.22
+    ],
+    [
+      "NVIDIA GeForce RTX 4090",
+      "COMMUNITY",
+      0.34
+    ],
+    [
+      "NVIDIA GeForce RTX 3090",
+      "SECURE",
+      0.5
+    ],
+    [
+      "NVIDIA RTX A5000",
+      "COMMUNITY",
+      null
+    ],
+    [
+      "NVIDIA RTX A5000",
+      "SECURE",
+      null
+    ],
+    [
+      "NVIDIA L4",
+      "COMMUNITY",
+      null
+    ],
+    [
+      "NVIDIA L4",
+      "SECURE",
+      null
+    ],
+    [
+      "NVIDIA A40",
+      "COMMUNITY",
+      null
+    ],
+    [
+      "NVIDIA A40",
+      "SECURE",
+      null
+    ],
+    [
+      "NVIDIA RTX A6000",
+      "COMMUNITY",
+      null
+    ],
+    [
+      "NVIDIA RTX A6000",
+      "SECURE",
+      null
+    ]
+  ],
+  "commit": "fefe22632d7ff09376ee28ba55f760248a7ed52b",
+  "created_utc": "2026-11-02T01:02:26.256326+00:00",
+  "grid": "grids/calibration.toml",
+  "max_batch": 64,
+  "model_batch_size": 32,
+  "outdir": "results/grids/calibration",
+  "pods": {
+    "0": {
+      "cloud": "attached",
+      "cost_per_hr": 0.89,
+      "created_utc": "2026-11-02T01:02:27.402916+00:00",
+      "gpu": "NVIDIA GeForce RTX 4090",
+      "id": "kery6w65bjb0ty",
+      "ssh": {
+        "host": "103.196.86.192",
+        "port": 12730,
+        "user": "root"
+      },
+      "terminated": "done",
+      "terminated_utc": "2026-11-02T01:56:21.053350+00:00"
+    }
+  },
+  "run": "cal-1",
+  "shards": 1,
+  "template": "runpod-torch-v240"
+}

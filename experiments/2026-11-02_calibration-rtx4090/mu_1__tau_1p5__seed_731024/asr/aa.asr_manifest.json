@@ -1,0 +1,33 @@
+{
+  "alignment_sha256": "ac6b4021b79691a8ce9694cf7ebd555164e7e1d138c50835b8276a7e26b09b7f",
+  "best_fit_model": "PMB+R3",
+  "command": [
+    "/workspace/structure-asr/.cache/tools/iqtree-3.1.4-Linux-intel/bin/iqtree3",
+    "-s",
+    "/workspace/structure-asr/results/grids/calibration/mu_1__tau_1p5__seed_731024/simulation/leaves.fasta",
+    "-st",
+    "AA",
+    "-te",
+    "/workspace/structure-asr/results/grids/calibration/asr_topology.nwk",
+    "-m",
+    "MFP",
+    "--ancestral",
+    "-T",
+    "1",
+    "--seed",
+    "731024",
+    "--prefix",
+    "/workspace/structure-asr/results/grids/calibration/mu_1__tau_1p5__seed_731024/asr/aa"
+  ],
+  "iqtree_version": "IQ-TREE version 3.1.4 for Linux x86 64-bit built Sep 10 2026",
+  "modality": "aa",
+  "outputs": {
+    "iqtree": "aa.iqtree",
+    "log": "aa.log",
+    "state": "aa.state",
+    "treefile": "aa.treefile"
+  },
+  "state_sha256": "f4285ac5a4caed439757bd5d69db910b6fefb8d61fbdcb075e806705dbbd15a3",
+  "topology_policy": "fixed known topology (-te); branch lengths and model parameters re-estimated",
+  "topology_sha256": "4e1f3b2d362f4d8dea4214d08cd8a3d56b1e8b19d749c9e430c201b8427c5e8b"
+}
