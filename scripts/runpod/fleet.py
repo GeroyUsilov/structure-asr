@@ -176,9 +176,10 @@ def ssh_command(pod: dict, remote: str, key: str | None) -> list[str]:
     return command + [f"{ssh['user']}@{ssh['host']}", remote]
 
 
-def rsync_command(pod: dict, source: str, dest: str, key: str | None) -> list[str]:
+def rsync_command(pod: dict, source: str, dest: str, key: str | None, delete: bool = False) -> list[str]:
     ssh = ["ssh", *SSH_OPTIONS, "-p", str(pod["ssh"]["port"])] + (["-i", key] if key else [])
-    return ["rsync", "-rltz", "--partial", "-e", shlex.join(ssh), source, dest]
+    return ["rsync", "-rltz", "--partial", *(["--delete"] if delete else []),
+            "-e", shlex.join(ssh), source, dest]
 
 
 def remote(pod: dict) -> str:
@@ -425,7 +426,7 @@ def sync_pod(runner: Runner, state: dict, shard: str, pod: dict, key: str | None
     runner(rsync_command(pod, f"{remote(pod)}:{REMOTE_WORK}/logs/", f"{local / 'pods' / f'shard_{shard}'}/", key),
            check=False)
     runner(rsync_command(pod, f"{remote(pod)}:{REMOTE_WORK}/status/",
-                         f"{local / 'pods' / f'shard_{shard}' / 'status'}/", key), check=False)
+                         f"{local / 'pods' / f'shard_{shard}' / 'status'}/", key, delete=True), check=False)
 
 
 def hours_since(iso: str) -> float:
