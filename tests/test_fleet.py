@@ -13,8 +13,10 @@ fleet = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fleet)
 
 GPU_LIST = json.dumps([
-    {"gpuId": "NVIDIA GeForce RTX 4090", "communityCloud": False, "secureCloud": True, "available": True},
-    {"gpuId": "NVIDIA GeForce RTX 3090", "communityCloud": True, "secureCloud": True, "available": True},
+    {"gpuId": "NVIDIA GeForce RTX 4090", "communityCloud": False, "secureCloud": True, "available": True,
+     "communityPricePerHr": None, "securePricePerHr": 0.89},
+    {"gpuId": "NVIDIA GeForce RTX 3090", "communityCloud": True, "secureCloud": True, "available": True,
+     "communityPricePerHr": 0.22, "securePricePerHr": 0.5},
     {"gpuId": "NVIDIA L4", "communityCloud": True, "secureCloud": True, "available": False},
 ])
 
@@ -62,12 +64,16 @@ class FleetTests(unittest.TestCase):
         self.assertIsNone(fleet.parse_ssh_info("ssh 8y5rumuyb50m78-6441103b@ssh.runpod.io -i key"))
         self.assertIsNone(fleet.parse_ssh_info(""))
 
-    def test_candidates_follow_preference_and_skip_unavailable(self):
-        pairs = fleet.candidates(fleet.DEFAULT_GPUS[:4], ["COMMUNITY", "SECURE"], GPU_LIST)
-        self.assertEqual(pairs[:3], [("NVIDIA GeForce RTX 4090", "SECURE"),
-                                     ("NVIDIA GeForce RTX 3090", "COMMUNITY"),
-                                     ("NVIDIA GeForce RTX 3090", "SECURE")])
-        self.assertNotIn(("NVIDIA L4", "COMMUNITY"), pairs)
+    def test_candidates_are_cheapest_first_and_skip_unavailable(self):
+        gpus = ["NVIDIA GeForce RTX 4090", "NVIDIA GeForce RTX 3090", "NVIDIA L4", "NVIDIA A40"]
+        pairs = fleet.candidates(gpus, ["COMMUNITY", "SECURE"], GPU_LIST)
+        self.assertEqual(pairs[:3], [("NVIDIA GeForce RTX 3090", "COMMUNITY", 0.22),
+                                     ("NVIDIA GeForce RTX 3090", "SECURE", 0.5),
+                                     ("NVIDIA GeForce RTX 4090", "SECURE", 0.89)])
+        self.assertNotIn("NVIDIA L4", {gpu for gpu, _cloud, _price in pairs})
+        self.assertEqual(pairs[3:], [("NVIDIA A40", "COMMUNITY", None), ("NVIDIA A40", "SECURE", None)])
+        capped = fleet.candidates(gpus, ["COMMUNITY", "SECURE"], GPU_LIST, max_price=0.6)
+        self.assertNotIn(("NVIDIA GeForce RTX 4090", "SECURE", 0.89), capped)
         # Unknown listing output keeps every pair rather than guessing.
         self.assertEqual(len(fleet.candidates(["X"], ["COMMUNITY", "SECURE"], "not json")), 2)
 
@@ -84,13 +90,14 @@ class FleetTests(unittest.TestCase):
                 patch.object(fleet, "run_dir", lambda run: Path(directory) / run), \
                 patch.object(fleet, "committed_head", lambda grid: "abc123"):
             runner = FakeRunner(local_status=Path(directory),
-                                out_of_stock={("NVIDIA GeForce RTX 4090", "SECURE")})
+                                out_of_stock={("NVIDIA GeForce RTX 3090", "COMMUNITY")})
             fleet.main(["--ssh-key", "/k", "launch", "cal", "--grid", "grids/calibration.toml",
                         "--pods", "2", "--yes"], runner=runner)
             state = json.loads((Path(directory) / "cal" / "fleet.json").read_text())
             self.assertEqual(state["commit"], "abc123")
             self.assertEqual(state["outdir"], "results/grids/calibration")
-            self.assertEqual({pod["gpu"] for pod in state["pods"].values()}, {"NVIDIA GeForce RTX 3090"})
+            self.assertEqual({(pod["gpu"], pod["cloud"]) for pod in state["pods"].values()},
+                             {("NVIDIA GeForce RTX 3090", "SECURE")})
             self.assertEqual(state["pods"]["1"]["ssh"]["port"], 10022)
             remote = [c[-1] for c in runner.commands if c[0] == "ssh"]
             self.assertTrue(any("git checkout -q abc123" in r for r in remote))

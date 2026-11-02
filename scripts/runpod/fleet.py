@@ -34,14 +34,19 @@ ROOT = Path(__file__).resolve().parents[2]
 REMOTE_WORK = "/workspace"
 REMOTE_REPO = f"{REMOTE_WORK}/structure-asr"
 DEFAULT_IMAGE = "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04"
-# Cheap types with >= 24 GB, in preference order (ProstT5 fp16 needs ~6 GB).
+# CUDA 12.4 / torch 2.4 image: pods need a driver for >= 12.4, and Blackwell
+# GPUs (RTX 50xx, RTX PRO Blackwell) are unsupported by torch 2.4.
+MIN_CUDA = "12.4"
+# Cheap pre-Blackwell types with >= 24 GB (ProstT5 fp16 needs ~6 GB). Tried
+# cheapest first using `runpodctl gpu list` prices; this order breaks ties.
 DEFAULT_GPUS = [
-    "NVIDIA GeForce RTX 4090",
     "NVIDIA GeForce RTX 3090",
+    "NVIDIA GeForce RTX 4090",
     "NVIDIA RTX A5000",
     "NVIDIA L4",
     "NVIDIA A40",
     "NVIDIA RTX A6000",
+    "NVIDIA L40S",
 ]
 SSH_OPTIONS = [
     "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
@@ -98,23 +103,33 @@ def parse_ssh_info(text: str) -> dict | None:
     return None
 
 
-def candidates(gpu_types: list[str], clouds: list[str], gpu_list_text: str) -> list[tuple[str, str]]:
-    """(gpu, cloud) pairs to try, dropping ones `runpodctl gpu list` reports unavailable."""
+def candidates(gpu_types: list[str], clouds: list[str], gpu_list_text: str,
+               max_price: float | None = None) -> list[tuple[str, str, float | None]]:
+    """(gpu, cloud, $/h) to try, cheapest first.
+
+    Pairs `runpodctl gpu list` reports unavailable or above ``max_price`` are
+    dropped; unlisted pairs are kept (price unknown) after the priced ones.
+    """
     try:
         listing = parse_json(gpu_list_text) or []
     except json.JSONDecodeError:
         listing = []
     known = {item.get("gpuId"): item for item in listing if isinstance(item, dict)}
     pairs = []
-    for gpu in gpu_types:
+    for rank, gpu in enumerate(gpu_types):
         for cloud in clouds:
             info = known.get(gpu)
+            price = None
             if info is not None:
                 flag = "communityCloud" if cloud == "COMMUNITY" else "secureCloud"
                 if info.get("available") is False or info.get(flag) is False:
                     continue
-            pairs.append((gpu, cloud))
-    return pairs
+                price = info.get("communityPricePerHr" if cloud == "COMMUNITY" else "securePricePerHr")
+                if max_price is not None and price is not None and price > max_price:
+                    continue
+            pairs.append((rank, gpu, cloud, price))
+    pairs.sort(key=lambda item: (item[3] is None, item[3] or 0.0, item[0]))
+    return [(gpu, cloud, price) for _rank, gpu, cloud, price in pairs]
 
 
 # -------------------------------------------------------------------- state
@@ -195,6 +210,7 @@ def create_pod(runner: Runner, args, state: dict, shard: int, gpu: str, cloud: s
         "--container-disk-in-gb", "30",
         "--volume-in-gb", str(args.volume_gb),
         "--ports", "22/tcp",
+        "--min-cuda-version", MIN_CUDA,
         "--output", "json",
     ]
     output = runner(command)
@@ -222,7 +238,7 @@ def wait_for_ssh(runner: Runner, pod_id: str, timeout: float, key: str | None,
 def start_pod(runner: Runner, args, state: dict, shard: int, push_outputs: bool = False) -> dict:
     """Create a pod for ``shard`` (falling back over GPU types/clouds) and start its job."""
     tried = []
-    for gpu, cloud in state["candidates"]:
+    for gpu, cloud, _price in state["candidates"]:
         try:
             pod_id = create_pod(runner, args, state, shard, gpu, cloud)
         except RuntimeError as error:  # no stock for this type/cloud
@@ -287,7 +303,8 @@ def command_launch(args, runner: Runner) -> None:
         raise SystemExit(f"run {args.run} already exists; use status/sync/relaunch")
     commit = committed_head(args.grid)
     pairs = candidates(args.gpu_types, args.clouds,
-                       runner(["runpodctl", "gpu", "list", "--output", "json"], check=False))
+                       runner(["runpodctl", "gpu", "list", "--output", "json"], check=False),
+                       args.max_price)
     state = {
         "run": args.run, "grid": args.grid, "outdir": grid_outdir(args.grid), "commit": commit,
         "shards": args.pods, "max_batch": args.max_batch, "model_batch_size": args.model_batch_size,
@@ -295,7 +312,8 @@ def command_launch(args, runner: Runner) -> None:
         "created_utc": datetime.now(timezone.utc).isoformat(),
     }
     print(f"Launching {args.pods} pod(s) for {args.grid} at {commit[:10]}; "
-          f"GPU preference: {', '.join(f'{g} ({c})' for g, c in pairs[:4])} ...", flush=True)
+          f"GPU preference: {', '.join(f'{g} ({c}, ${p}/h)' for g, c, p in pairs[:4])} ...",
+          flush=True)
     if not args.yes and not runner.dry_run:
         if input("Pods bill until terminated. Continue? [y/N] ").strip().lower() != "y":
             raise SystemExit("aborted")
@@ -432,6 +450,7 @@ def build_parser() -> argparse.ArgumentParser:
     launch.add_argument("--clouds", nargs="+", default=["COMMUNITY", "SECURE"],
                         choices=["COMMUNITY", "SECURE"])
     launch.add_argument("--image", default=DEFAULT_IMAGE)
+    launch.add_argument("--max-price", type=float, default=0.6, help="skip GPU types above this $/h")
     launch.add_argument("--volume-gb", type=int, default=80)
     launch.add_argument("--max-batch", type=int, default=64)
     launch.add_argument("--model-batch-size", type=int, default=32)
