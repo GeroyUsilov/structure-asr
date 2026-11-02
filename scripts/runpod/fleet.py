@@ -33,7 +33,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 REMOTE_WORK = "/workspace"
 REMOTE_REPO = f"{REMOTE_WORK}/structure-asr"
-DEFAULT_IMAGE = "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04"
+# Official "Runpod Pytorch 2.4.0" template: runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04
+# with its start script (sshd, PUBLIC_KEY). Creating from the bare image instead
+# left containers unbooted for >10 min; from the template SSH was up in ~40 s.
+DEFAULT_TEMPLATE = "runpod-torch-v240"
 # CUDA 12.4 / torch 2.4 image: pods need a driver for >= 12.4, and Blackwell
 # GPUs (RTX 50xx, RTX PRO Blackwell) are unsupported by torch 2.4.
 MIN_CUDA = "12.4"
@@ -204,12 +207,11 @@ def create_pod(runner: Runner, args, state: dict, shard: int, gpu: str, cloud: s
     command = [
         "runpodctl", "pod", "create",
         "--name", f"asr-{state['run']}-s{shard}",
-        "--image", args.image,
+        "--template-id", args.template,
         "--gpu-id", gpu, "--gpu-count", "1",
         "--cloud-type", cloud,
         "--container-disk-in-gb", "30",
         "--volume-in-gb", str(args.volume_gb),
-        "--ports", "22/tcp",
         "--min-cuda-version", MIN_CUDA,
         "--output", "json",
     ]
@@ -310,7 +312,7 @@ def command_launch(args, runner: Runner) -> None:
     state = {
         "run": args.run, "grid": args.grid, "outdir": grid_outdir(args.grid), "commit": commit,
         "shards": args.pods, "max_batch": args.max_batch, "model_batch_size": args.model_batch_size,
-        "image": args.image, "candidates": pairs, "pods": {},
+        "template": args.template, "candidates": pairs, "pods": {},
         "created_utc": datetime.now(timezone.utc).isoformat(),
     }
     print(f"Launching {args.pods} pod(s) for {args.grid} at {commit[:10]}; "
@@ -338,7 +340,7 @@ def command_relaunch(args, runner: Runner) -> None:
     old = state["pods"].get(str(args.shard))
     if old and not old.get("terminated"):
         runner(["runpodctl", "pod", "delete", old["id"]], check=False)
-    args.image = state["image"]
+    args.template = state["template"]
     args.bundle = make_bundle(runner, state["commit"])
     state["pods"][str(args.shard)] = start_pod(runner, args, state, args.shard, push_outputs=True)
     save_state(state)
@@ -451,19 +453,19 @@ def build_parser() -> argparse.ArgumentParser:
     launch.add_argument("--gpu-types", nargs="+", default=DEFAULT_GPUS)
     launch.add_argument("--clouds", nargs="+", default=["COMMUNITY", "SECURE"],
                         choices=["COMMUNITY", "SECURE"])
-    launch.add_argument("--image", default=DEFAULT_IMAGE)
+    launch.add_argument("--template", default=DEFAULT_TEMPLATE, help="RunPod template id")
     launch.add_argument("--max-price", type=float, default=0.6, help="skip GPU types above this $/h")
-    launch.add_argument("--volume-gb", type=int, default=80)
+    launch.add_argument("--volume-gb", type=int, default=40)
     launch.add_argument("--max-batch", type=int, default=64)
     launch.add_argument("--model-batch-size", type=int, default=32)
-    launch.add_argument("--ssh-timeout", type=float, default=600)
+    launch.add_argument("--ssh-timeout", type=float, default=900)
     launch.add_argument("--yes", action="store_true", help="skip the cost confirmation prompt")
     launch.add_argument("--dry-run", action="store_true", help="print commands; create nothing")
     relaunch = sub.add_parser("relaunch", help="replace one shard's pod and resume from synced output")
     relaunch.add_argument("run")
     relaunch.add_argument("--shard", type=int, required=True)
-    relaunch.add_argument("--volume-gb", type=int, default=80)
-    relaunch.add_argument("--ssh-timeout", type=float, default=600)
+    relaunch.add_argument("--volume-gb", type=int, default=40)
+    relaunch.add_argument("--ssh-timeout", type=float, default=900)
     status = sub.add_parser("status", help="pods, elapsed time, cost and stage")
     status.add_argument("run")
     sync = sub.add_parser("sync", help="rsync outputs and logs home; optionally loop and clean up")
