@@ -241,8 +241,10 @@ def start_pod(runner: Runner, args, state: dict, shard: int, push_outputs: bool 
     for gpu, cloud, _price in state["candidates"]:
         try:
             pod_id = create_pod(runner, args, state, shard, gpu, cloud)
-        except RuntimeError as error:  # no stock for this type/cloud
-            tried.append(f"{gpu}/{cloud}: {str(error).splitlines()[0][:120]}")
+        except RuntimeError as error:  # usually no stock for this type/cloud
+            reason = re.search(r'"error"\s*:\s*"([^"]+)"', str(error))
+            tried.append(f"{gpu}/{cloud}: {reason.group(1) if reason else str(error)[-200:]}")
+            print(f"shard {shard}: {tried[-1]}", flush=True)
             continue
         print(f"shard {shard}: created {pod_id} ({gpu}, {cloud}); waiting for direct SSH", flush=True)
         pod = {"id": pod_id, "gpu": gpu, "cloud": cloud,
