@@ -86,6 +86,15 @@ class FleetTests(unittest.TestCase):
         self.assertIn("run_shard.sh grids/calibration.toml 2/3", job)
         self.assertIn("bootstrap.sh", job)
         self.assertTrue(job.rstrip().endswith("&"))
+        # Run it against a fake workspace: the log must appear even though logs/ did not exist.
+        with tempfile.TemporaryDirectory() as directory:
+            fake = job.replace(fleet.REMOTE_WORK, directory).replace(
+                f"cd {directory}/structure-asr", f"cd {directory}").replace(
+                "bash scripts/runpod/bootstrap.sh", "true").replace(
+                "bash scripts/runpod/run_shard.sh", "echo run_shard")
+            subprocess.run(["bash", "-c", fake + " wait"], check=True)
+            self.assertIn("run_shard grids/calibration.toml 2/3",
+                          (Path(directory) / "logs" / "shard.log").read_text())
 
     def test_launch_falls_back_and_sync_terminates_finished_pods(self):
         with tempfile.TemporaryDirectory() as directory, \

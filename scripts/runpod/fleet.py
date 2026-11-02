@@ -196,8 +196,10 @@ def shard_job(state: dict, shard: int) -> str:
         f"(bash scripts/runpod/bootstrap.sh || "
         f"{{ echo bootstrap exit $? > {REMOTE_WORK}/status/FAILED; exit 1; }}) && {run_shard}"
     )
-    return (f"cd {REMOTE_REPO} && nohup bash -c {shlex.quote(job)} "
-            f"> {REMOTE_WORK}/logs/shard.log 2>&1 < /dev/null &")
+    # The log directory must exist before the redirect: a failed redirect on a
+    # backgrounded command fails silently and nothing runs.
+    return (f"mkdir -p {REMOTE_WORK}/logs {REMOTE_WORK}/status && cd {REMOTE_REPO} && "
+            f"nohup bash -c {shlex.quote(job)} > {REMOTE_WORK}/logs/shard.log 2>&1 < /dev/null &")
 
 
 # ------------------------------------------------------------------- launch
