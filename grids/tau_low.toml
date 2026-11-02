@@ -1,0 +1,22 @@
+# Low-temperature forward generation: does conservative AA resampling keep the
+# fold intact at high mu? Reconstruction stages only (no [sample]); the readouts
+# are per-tip 3Di composition and AA/3Di MAP accuracy.
+[grid]
+name = "tau_low"
+outdir = "../results/grids/tau_low"
+tree = "../examples/ef_tu/reference/AB_eftu_rerooted.tre"
+alignment = "../examples/ef_tu/reference/EFTu_all_alignment.fasta"
+root_accession = "163840912"
+rates = [2, 4, 8]
+proposal_temperatures = [0.5]
+seeds = [731024]
+model_name = "facebook/esm2_t33_650M_UR50D"
+dtype = "float16"
+max_attempts_per_cell = 100000
+
+[asr]
+iqtree = "iqtree3"              # or set ASR_IQTREE / pass --iqtree
+threads_per_job = 1
+aa_model = "MFP"                # ModelFinder, BIC
+three_di_matrix = "../.cache/models/3di/Q.3Di.AF"   # scripts/fetch_3di_matrix.sh
+three_di_model_name = "Q3DI_AF"
