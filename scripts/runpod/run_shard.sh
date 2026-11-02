@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Run every asr-grid inference stage for one shard on a bootstrapped pod.
 #   bash scripts/runpod/run_shard.sh grids/example.toml 0/4 [--max-batch 64] [--model-batch-size 32]
+#
+# encode uses a smaller ProstT5 batch than sample: a 24 GB card reports ~22 GiB
+# usable and batch 32 peaks at ~22.4 GB, which OOMed a 4090 on the tau_low run.
 # Stages resume, so rerunning after an interruption continues where it stopped.
 # Writes $WORKSPACE/status/{RUNNING,DONE,FAILED} with the stage and exit code.
 # `evaluate` (the only stage that reads truth) runs locally after fleet.py sync.
@@ -9,11 +12,12 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$PROJECT_DIR"
 WORK="${WORKSPACE:-/workspace}"
 GRID="$1"; SHARD="$2"; shift 2
-MAX_BATCH=64; MODEL_BATCH=32
+MAX_BATCH=64; MODEL_BATCH=32; ENCODE_BATCH=16
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --max-batch) MAX_BATCH="$2"; shift 2 ;;
     --model-batch-size) MODEL_BATCH="$2"; shift 2 ;;
+    --encode-batch-size) ENCODE_BATCH="$2"; shift 2 ;;
     *) echo "unknown option $1" >&2; exit 2 ;;
   esac
 done
@@ -39,7 +43,7 @@ stage() {
 }
 
 stage forward --max-batch "$MAX_BATCH"
-stage encode --batch-size "$MODEL_BATCH" --resume
+stage encode --batch-size "$ENCODE_BATCH" --resume
 stage asr --jobs "$(nproc)"
 if grep -q '^\[sample\]' "$GRID"; then
   stage sample --model-batch-size "$MODEL_BATCH" --resume

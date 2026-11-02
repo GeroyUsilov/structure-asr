@@ -1,0 +1,38 @@
+{
+  "alignment_sha256": "6c03b09f509366acf6b9dc975678310b1d1e6eba5f81079685de746b66a09d9a",
+  "best_fit_model": "Q3DI_AF+I+G4",
+  "command": [
+    "/workspace/structure-asr/.cache/tools/iqtree-3.1.4-Linux-intel/bin/iqtree3",
+    "-s",
+    "/workspace/structure-asr/results/grids/tau_low/mu_2__tau_0p5__seed_731024/three_di/leaves_3di.fasta",
+    "-st",
+    "AA",
+    "-te",
+    "/workspace/structure-asr/results/grids/tau_low/asr_topology.nwk",
+    "-m",
+    "MFP",
+    "--ancestral",
+    "-T",
+    "1",
+    "--seed",
+    "731024",
+    "--prefix",
+    "/workspace/structure-asr/results/grids/tau_low/mu_2__tau_0p5__seed_731024/asr/3di",
+    "-mdef",
+    "/workspace/structure-asr/results/grids/tau_low/mu_2__tau_0p5__seed_731024/asr/three_di_model.nex",
+    "-mset",
+    "Q3DI_AF"
+  ],
+  "iqtree_version": "IQ-TREE version 3.1.4 for Linux x86 64-bit built Sep 10 2026",
+  "modality": "3di",
+  "model_definition_sha256": "bb53435eb532e405d7c56108b373529453a9a31881f5cc11d340681a0dac062f",
+  "outputs": {
+    "iqtree": "3di.iqtree",
+    "log": "3di.log",
+    "state": "3di.state",
+    "treefile": "3di.treefile"
+  },
+  "state_sha256": "03fbbccf190c6f77dbda5c0bd6d60b4132c5e6d89fdf641d9189cd15de2cf3c4",
+  "topology_policy": "fixed known topology (-te); branch lengths and model parameters re-estimated",
+  "topology_sha256": "4e1f3b2d362f4d8dea4214d08cd8a3d56b1e8b19d749c9e430c201b8427c5e8b"
+}

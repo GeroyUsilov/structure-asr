@@ -1,0 +1,13 @@
+{
+  "aa_nodes_sha256": "53445ba247471c162d129516ff774956a8820f82e2e803bca9a2aa2e6cb61a84",
+  "batch_size": 12,
+  "checkpoint": "/workspace/structure-asr/results/grids/tau_low/three_di_work/encoding_0_of_1.jsonl",
+  "created_utc": "2026-11-02T18:58:31.680798+00:00",
+  "do_sample": false,
+  "leaves_3di_sha256": "6c03b09f509366acf6b9dc975678310b1d1e6eba5f81079685de746b66a09d9a",
+  "method": "deterministic greedy <AA2fold> generation",
+  "model": "Rostlab/ProstT5",
+  "num_beams": 1,
+  "resolved_model_path": "/workspace/hf/hub/models--Rostlab--ProstT5/snapshots/d7d097d5bf9a993ab8f68488b4681d6ca70db9e5",
+  "truth_3di": "../truth/ground_truth_nodes_3di.fasta (evaluation only)"
+}
