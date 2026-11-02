@@ -438,7 +438,11 @@ def terminate(runner: Runner, state: dict, shard: str, reason: str) -> None:
     runner(["runpodctl", "pod", "delete", pod["id"]], check=False)
     pod["terminated"] = reason
     pod["terminated_utc"] = datetime.now(timezone.utc).isoformat()
-    save_state(state)
+    # Merge into the file as it is now: a concurrent relaunch may have added pods.
+    current = load_state(state["run"]) if (run_dir(state["run"]) / "fleet.json").exists() else state
+    current["pods"][shard] = pod
+    state["pods"] = current["pods"]
+    save_state(current)
     print(f"shard {shard}: terminated {pod['id']} ({reason})", flush=True)
 
 
