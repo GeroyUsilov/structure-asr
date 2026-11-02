@@ -53,8 +53,9 @@ expect roughly 200–250k encodings.
 - Wall time is at least 1000 sequential steps. With 9 pods (30 chains each, one
   batch of ≤32 per step, ~19 s) it takes ~5–6 h. With 18 pods (15 chains, ~12 s
   per step) it takes ~3.5 h, at lower batch efficiency and higher cost.
-- Not measured: 48/80 GB cards (L40S, A100), which allow batch ~100–170. Their
-  seconds per batch, and therefore whether they are cheaper per encoding, are unknown.
+- 80 GB cards do not help: the A100 plateaus at ~1.8 encodings/s at batch 64–128
+  (`2026-11-02_calibration-a100`), so cheap 24 GB cards at batch 32 are the
+  most cost-effective option.
 
 ## Launcher issues found and fixed during this run
 

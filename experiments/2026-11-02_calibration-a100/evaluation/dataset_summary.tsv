@@ -1,0 +1,3 @@
+condition	tau	modality	status	matched_nodes	unmatched_nodes	evaluated_sites	mean_p_ground_truth	map_accuracy	printed_zero_sites	mean_nll_censored	geometric_mean_p_censored	state_file	best_fit_model	mutation_scale	seed
+mu_1__tau_1p5__seed_731024	1.5	aa	complete	37	0	14652	0.9733180316680317	0.9793884793884794	1	0.06821329659392071	0.9340612202511481	/Users/christopher/Documents/structure_asr/results/runpod/cal-a100/grid/mu_1__tau_1p5__seed_731024/asr/aa.state	PMB+R3	1.0	731024
+mu_1__tau_1p5__seed_731024	1.5	3di	complete	37	0	14652	0.9005791018291018	0.9048594048594049	119	0.5266589496143211	0.5905748173871475	/Users/christopher/Documents/structure_asr/results/runpod/cal-a100/grid/mu_1__tau_1p5__seed_731024/asr/3di.state	Q3DI_AF+I+G4	1.0	731024

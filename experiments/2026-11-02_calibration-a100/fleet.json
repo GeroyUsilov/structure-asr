@@ -1,0 +1,39 @@
+{
+  "candidates": [
+    [
+      "NVIDIA A100 80GB PCIe",
+      "COMMUNITY",
+      1.19
+    ],
+    [
+      "NVIDIA A100-SXM4-80GB",
+      "COMMUNITY",
+      1.39
+    ]
+  ],
+  "commit": "c32d89b7735c2d191b6f621bf533b85fa02f0c23",
+  "created_utc": "2026-11-02T01:57:50.494066+00:00",
+  "grid": "grids/calibration.toml",
+  "max_batch": 64,
+  "model_batch_size": 128,
+  "outdir": "results/grids/calibration",
+  "pods": {
+    "0": {
+      "cloud": "COMMUNITY",
+      "cost_per_hr": 1.19,
+      "created_utc": "2026-11-02T01:57:52.184254+00:00",
+      "gpu": "NVIDIA A100 80GB PCIe",
+      "id": "8ktcae9e2zhby9",
+      "ssh": {
+        "host": "104.255.9.187",
+        "port": 12284,
+        "user": "root"
+      },
+      "terminated": "done",
+      "terminated_utc": "2026-11-02T02:28:55.937029+00:00"
+    }
+  },
+  "run": "cal-a100",
+  "shards": 1,
+  "template": "runpod-torch-v240"
+}

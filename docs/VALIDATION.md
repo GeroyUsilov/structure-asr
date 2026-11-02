@@ -73,7 +73,15 @@ loading ESM2/ProstT5 and without running IQ-TREE.
   bootstrap, forward, encode, asr and sample ran on an RTX 4090 pod via
   `fleet.py`; evaluation ran locally (37/37 nodes, AA MAP 97.83%). ProstT5
   greedy decoding costs ~19 s per batch of 32 at 22.4 GB peak memory; batch 64
-  does not fit in 24 GB. Larger GPUs are unmeasured.
+  does not fit in 24 GB. On an A100 80GB (`experiments/2026-11-02_calibration-a100/`)
+  throughput plateaus at ~1.8 encodings/s (batch 64–128), so cheap 24 GB cards
+  give the most encodings per dollar.
+- Cross-GPU reproducibility: the same seed and commit gave different forward
+  simulations on RTX 4090 and A100. In 5 of 4,777 draws, with identical parent
+  sequences, a different residue was accepted at the same site (fp16 ESM2
+  numerics), and each flip changed the downstream subtree (36 of 77 nodes
+  differ). Treat seeds as exactly reproducible only on the same GPU type and
+  batch layout.
 
 These checks do not establish GPU performance, new model compatibility, sampler
 convergence, improved AA recovery or a completed new-data ASR benchmark.
