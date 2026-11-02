@@ -382,7 +382,7 @@ def command_redeploy(args, runner: Runner) -> None:
     pod = state["pods"][str(args.shard)]
     if pod.get("terminated"):
         raise SystemExit(f"shard {args.shard}'s pod was terminated; use relaunch")
-    running = runner(ssh_command(pod, "pgrep -f 'run_shard.sh|bootstrap.sh' || true", args.ssh_key))
+    running = runner(ssh_command(pod, "pgrep -f '[r]un_shard.sh|[b]ootstrap.sh' || true", args.ssh_key))
     if running.strip():
         raise SystemExit(f"shard {args.shard} is still running (pids {running.split()})")
     state["commit"] = committed_head(state["grid"])
