@@ -470,6 +470,37 @@ class GridSampleTests(unittest.TestCase):
             self.assertEqual(sample["total_chain_steps"], 4 * 2 * 3 * 2 * 6)
 
 
+class EvaluationMapStateTests(unittest.TestCase):
+    def test_unlabelled_iqtree_state_falls_back_to_argmax(self):
+        from collections import OrderedDict
+        from structure_asr.evaluation import score_dataset
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "3di.state"
+            alphabet = "ARNDCQEGHILKMFPSTWYV"
+
+            def row(site, state, probabilities):
+                values = [f"{probabilities.get(letter, 0.0):.5f}" for letter in alphabet]
+                return "\t".join(["Node1", str(site), state, *values]) + "\n"
+
+            path.write_text(
+                "# IQ-TREE header\n"
+                + "\t".join(["Node", "Site", "State", *(f"p_{letter}" for letter in alphabet)]) + "\n"
+                + row(1, "D", {"A": 0.1, "D": 0.8, "P": 0.1})
+                + row(2, "-", {"A": 0.2, "D": 0.3, "P": 0.5})
+            )
+            sites = StringIO()
+            writer = csv.DictWriter(sites, fieldnames=None, extrasaction="ignore")
+            writer.fieldnames = ["inferred_node", "site", "map_state", "truth_state", "map_correct"]
+            mapping = [{"matched": True, "inferred_node": "Node1", "ground_truth_node": "Internal_0001"}]
+            nodes, dataset = score_dataset(
+                condition="c", tau=1.5, modality="3di", state_path=path,
+                truth=OrderedDict(Internal_0001="DP"), mapping_rows=mapping, site_writer=writer,
+            )
+            self.assertEqual(dataset["map_accuracy"], 1.0)
+            self.assertEqual(nodes[0]["map_accuracy"], 1.0)
+
+
 @unittest.skipUnless(os.environ.get("ASR_IQTREE"), "set ASR_IQTREE to run real IQ-TREE")
 class RealIqtreeTests(unittest.TestCase):
     def test_real_aa_reconstruction_on_bundled_tips_maps_all_nodes(self):

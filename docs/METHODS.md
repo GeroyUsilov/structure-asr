@@ -133,6 +133,9 @@ Direct 3Di marginal-MAP is different from f(AA-MAP).
 Probability conventions retained from the original scripts:
 
 - Sampling: floor each posterior entry at 5×10⁻⁶, then normalize the row.
+- MAP state: IQ-TREE's `State` column. Where it prints `-` (seen for 3Di
+  under +F models at μ≥2), use the most probable printed state; wherever a
+  state is printed it equals that argmax.
 - Dataset truth scores: use printed probabilities; clamp values below 5×10⁻⁶
   only for log scoring; count printed zeros separately.
 - Score histograms: normalize printed rows, sample independent site states,

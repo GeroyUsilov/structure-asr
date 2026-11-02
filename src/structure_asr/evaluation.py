@@ -228,6 +228,11 @@ def score_dataset(
                 )
             probability = float(state_row[f"p_{truth_state}"])
             map_state = str(state_row["State"])
+            if map_state not in alphabet:
+                # IQ-TREE 3.1.4 prints "-" for some 3Di sites under +F models;
+                # where it prints a state, it is always the argmax.
+                map_state = max(probability_columns, key=lambda column: float(state_row[column]))
+                map_state = map_state.removeprefix("p_")
             map_probability = float(state_row[f"p_{map_state}"])
             printed_zero = probability == 0.0
             censored = max(probability, ROUNDING_FLOOR)
