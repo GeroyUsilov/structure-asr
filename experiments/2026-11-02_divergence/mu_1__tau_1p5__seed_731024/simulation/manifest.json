@@ -1,0 +1,34 @@
+{
+  "config": {
+    "alphabet": "ACDEFGHIKLMNPQRSTVWY",
+    "dtype": "float16",
+    "grid": "divergence",
+    "kernel": "exact_mlm_gibbs",
+    "model_name": "facebook/esm2_t33_650M_UR50D",
+    "mutation_scale": 1.0,
+    "proposal": "exact_mlm",
+    "proposal_temperature": 1.5,
+    "root_accession": "163840912",
+    "root_fasta": "/workspace/structure-asr/results/grids/divergence/mu_1__tau_1p5__seed_731024/root_sequence.fasta",
+    "seed": 731024,
+    "tree": "/workspace/structure-asr/examples/ef_tu/reference/AB_eftu_rerooted.tre",
+    "tree_sha256": "8e023f648c0455a09da367f222ced49b6d111136c69dfea39a3f24504ff421db"
+  },
+  "created_utc": "2026-11-02T09:28:14.127092+00:00",
+  "event_count": 4777,
+  "execution": {
+    "max_batch": 64,
+    "mode": "batched multi-lane (structure_asr.batched_forward)",
+    "note": "batch composition may change GPU numerics relative to batch-1 runs"
+  },
+  "node_count": 77,
+  "outputs": {
+    "events": "events.tsv",
+    "ground_truth": "ground_truth_nodes.fasta",
+    "leaves": "leaves.fasta",
+    "node_scores": "node_scores.tsv",
+    "tree": "tree.nwk"
+  },
+  "realized_residue_changes": 3738,
+  "schema_version": 1
+}

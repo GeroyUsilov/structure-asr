@@ -1,0 +1,30 @@
+# Divergence scan: does structure help more as AA reconstruction gets harder?
+# 4 mu x 2 tau x 1 seed cells; 3 lambdas x 3 nodes per cell = 72 chains.
+# No lambda = 0 control yet (planned as a follow-up run). See experiments/.
+[grid]
+name = "divergence"
+outdir = "../results/grids/divergence"
+tree = "../examples/ef_tu/reference/AB_eftu_rerooted.tre"
+alignment = "../examples/ef_tu/reference/EFTu_all_alignment.fasta"
+root_accession = "163840912"
+rates = [1, 2, 4, 8]
+proposal_temperatures = [1.5, 2]
+seeds = [731024]
+model_name = "facebook/esm2_t33_650M_UR50D"
+dtype = "float16"
+max_attempts_per_cell = 100000
+
+[asr]
+iqtree = "iqtree3"              # or set ASR_IQTREE / pass --iqtree
+threads_per_job = 1
+aa_model = "MFP"                # ModelFinder, BIC
+three_di_matrix = "../.cache/models/3di/Q.3Di.AF"   # scripts/fetch_3di_matrix.sh
+three_di_model_name = "Q3DI_AF"
+
+[sample]
+structural_lambdas = [0.02, 0.05, 0.1]
+nodes = ["Node1", "Node29", "Node34"]
+n_iter = 1000
+chains_per_node = 1
+mcmc_temperature = 2
+site_uncertainty_mixture = 0.9
