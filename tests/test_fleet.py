@@ -130,6 +130,14 @@ class FleetTests(unittest.TestCase):
             self.assertEqual(sorted(deleted), ["pod1", "pod2"])
             state = json.loads((Path(directory) / "cal" / "fleet.json").read_text())
             self.assertTrue(all(pod["terminated"] == "done" for pod in state["pods"].values()))
+            # relaunch on a run with nothing synced yet must not rsync a
+            # missing directory (it used to strand the new pod).
+            fleet.main(["--ssh-key", "/k", "relaunch", "cal", "--shard", "0"], runner=runner)
+            pushes = [c for c in runner.commands
+                      if c[0] == "rsync" and c[-2].rstrip("/").endswith("grid")]
+            self.assertEqual(pushes, [])
+            self.assertFalse(json.loads((Path(directory) / "cal" / "fleet.json").read_text())
+                             ["pods"]["0"].get("terminated"))
             # An existing pod can be adopted instead of created.
             before = runner.created
             fleet.main(["--ssh-key", "/k", "launch", "cal2", "--grid", "grids/calibration.toml",

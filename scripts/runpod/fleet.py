@@ -320,8 +320,10 @@ def deploy(runner: Runner, args, state: dict, shard: int, pod: dict, push_output
         f"test -d {REMOTE_REPO}/.git || git clone -q --no-checkout {REMOTE_WORK}/repo.bundle {REMOTE_REPO}; "
         f"cd {REMOTE_REPO} && git fetch -q {REMOTE_WORK}/repo.bundle && git checkout -q {state['commit']}"
     ), key))
-    if push_outputs:
-        local = run_dir(state["run"]) / "grid"
+    local = run_dir(state["run"]) / "grid"
+    if push_outputs and any(local.glob("*")):
+        # Only when a previous pod's work was synced: rsync fails on a missing
+        # source, which used to strand the pod it had just created.
         runner(ssh_command(pod, f"mkdir -p {REMOTE_REPO}/{state['outdir']}", key))
         runner(rsync_command(pod, f"{local}/", f"{remote(pod)}:{REMOTE_REPO}/{state['outdir']}/", key))
     runner(ssh_command(pod, shard_job(state, shard), key))
