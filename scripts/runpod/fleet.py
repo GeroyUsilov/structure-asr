@@ -224,11 +224,29 @@ def create_pod(runner: Runner, args, state: dict, shard: int, gpu: str, cloud: s
     return str(payload["id"])
 
 
+def pod_ssh(runner: Runner, pod_id: str) -> dict | None:
+    """Direct SSH endpoint from `runpodctl pod get` (its "ssh" field).
+
+    `runpodctl ssh info` (v3.0.1) kept answering "no container reported yet"
+    for pods that `pod get` showed running with a mapped port, so it is only a
+    fallback.
+    """
+    try:
+        details = parse_json(runner(["runpodctl", "pod", "get", pod_id, "--output", "json"], check=False))
+    except json.JSONDecodeError:
+        details = None
+    if isinstance(details, dict) and isinstance(details.get("ssh"), dict):
+        info = parse_ssh_info(json.dumps(details["ssh"]))
+        if info is not None:
+            return info
+    return parse_ssh_info(runner(["runpodctl", "ssh", "info", pod_id], check=False))
+
+
 def wait_for_ssh(runner: Runner, pod_id: str, timeout: float, key: str | None,
                  poll: float = 15.0) -> dict | None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        info = parse_ssh_info(runner(["runpodctl", "ssh", "info", pod_id], check=False))
+        info = pod_ssh(runner, pod_id)
         if info is not None and "ready" in runner(
             ssh_command({"ssh": info}, "echo ready", key), check=False
         ):
@@ -237,18 +255,28 @@ def wait_for_ssh(runner: Runner, pod_id: str, timeout: float, key: str | None,
     return None
 
 
-def start_pod(runner: Runner, args, state: dict, shard: int, push_outputs: bool = False) -> dict:
-    """Create a pod for ``shard`` (falling back over GPU types/clouds) and start its job."""
+def start_pod(runner: Runner, args, state: dict, shard: int, push_outputs: bool = False,
+              attach: str | None = None) -> dict:
+    """Create a pod for ``shard`` (falling back over GPU types/clouds) and start its job.
+
+    With ``attach``, adopt that existing pod instead of creating one.
+    """
     tried = []
-    for gpu, cloud, _price in state["candidates"]:
-        try:
-            pod_id = create_pod(runner, args, state, shard, gpu, cloud)
-        except RuntimeError as error:  # usually no stock for this type/cloud
-            reason = re.search(r'"error"\s*:\s*"([^"]+)"', str(error))
-            tried.append(f"{gpu}/{cloud}: {reason.group(1) if reason else str(error)[-200:]}")
-            print(f"shard {shard}: {tried[-1]}", flush=True)
-            continue
-        print(f"shard {shard}: created {pod_id} ({gpu}, {cloud}); waiting for direct SSH", flush=True)
+    options = [(None, None, None)] if attach else state["candidates"]
+    for gpu, cloud, _price in options:
+        if attach:
+            details = parse_json(runner(["runpodctl", "pod", "get", attach, "--output", "json"]))
+            pod_id, gpu, cloud = attach, details.get("gpuId", "?"), "attached"
+        else:
+            try:
+                pod_id = create_pod(runner, args, state, shard, gpu, cloud)
+            except RuntimeError as error:  # usually no stock for this type/cloud
+                reason = re.search(r'"error"\s*:\s*"([^"]+)"', str(error))
+                tried.append(f"{gpu}/{cloud}: {reason.group(1) if reason else str(error)[-200:]}")
+                print(f"shard {shard}: {tried[-1]}", flush=True)
+                continue
+        print(f"shard {shard}: {'attached' if attach else 'created'} {pod_id} ({gpu}, {cloud}); "
+              f"waiting for direct SSH", flush=True)
         pod = {"id": pod_id, "gpu": gpu, "cloud": cloud,
                "created_utc": datetime.now(timezone.utc).isoformat()}
         if runner.dry_run:
@@ -257,6 +285,9 @@ def start_pod(runner: Runner, args, state: dict, shard: int, push_outputs: bool 
             pod["ssh"] = wait_for_ssh(runner, pod_id, args.ssh_timeout, args.ssh_key)
             if pod["ssh"] is None:
                 tried.append(f"{gpu}/{cloud}: no direct SSH within {args.ssh_timeout:.0f} s")
+                if attach:
+                    raise RuntimeError(f"attached pod {pod_id} has no direct SSH")
+                print(f"shard {shard}: {tried[-1]}; deleting {pod_id}", flush=True)
                 runner(["runpodctl", "pod", "delete", pod_id], check=False)
                 continue
         details = parse_json(runner(["runpodctl", "pod", "get", pod_id, "--output", "json"],
@@ -324,9 +355,12 @@ def command_launch(args, runner: Runner) -> None:
     args.bundle = make_bundle(runner, commit)
     if not runner.dry_run:
         save_state(state)
+    if args.attach and len(args.attach) > args.pods:
+        raise SystemExit("--attach lists more pods than --pods")
     for shard in range(args.pods):
+        attach = args.attach[shard] if args.attach and shard < len(args.attach) else None
         try:
-            state["pods"][str(shard)] = start_pod(runner, args, state, shard)
+            state["pods"][str(shard)] = start_pod(runner, args, state, shard, attach=attach)
         finally:
             if not runner.dry_run:
                 save_state(state)
@@ -459,6 +493,8 @@ def build_parser() -> argparse.ArgumentParser:
     launch.add_argument("--max-batch", type=int, default=64)
     launch.add_argument("--model-batch-size", type=int, default=32)
     launch.add_argument("--ssh-timeout", type=float, default=900)
+    launch.add_argument("--attach", nargs="+", metavar="POD_ID",
+                        help="adopt these running pods for shards 0.. instead of creating them")
     launch.add_argument("--yes", action="store_true", help="skip the cost confirmation prompt")
     launch.add_argument("--dry-run", action="store_true", help="print commands; create nothing")
     relaunch = sub.add_parser("relaunch", help="replace one shard's pod and resume from synced output")

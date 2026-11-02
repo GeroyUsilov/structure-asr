@@ -1,8 +1,7 @@
 # Running and extending the workflows
 
-Run commands from the repository root after the README installation. On RunPod,
-clone the GitHub repository onto the network volume and check out the commit
-to run (README "RunPod workflows"). Outputs below are ignored by Git; record
+Run commands from the repository root after the README installation. Grids run
+on RunPod through `scripts/runpod/fleet.py` ("Running a grid on RunPod" below). Outputs below are ignored by Git; record
 finished runs with `scripts/record_run.sh` (see `experiments/README.md`). Set `HF_HOME` to persistent RunPod storage if desired;
 reuse a known-good cached model through `--model /path/to/snapshot` rather than
 downloading duplicate weights. Do not run GPU steps on the local machine.

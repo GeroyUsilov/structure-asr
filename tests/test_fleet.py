@@ -43,10 +43,12 @@ class FakeRunner(fleet.Runner):
                 raise RuntimeError("There are no longer any instances available")
             self.created += 1
             return json.dumps({"id": f"pod{self.created}", "costPerHr": 0.34})
-        if head == ["runpodctl", "ssh", "info"]:
-            return "SSH command: ssh root@203.0.113.7 -p 10022 -i ~/.ssh/id_ed25519\n"
+        if head == ["runpodctl", "ssh", "info"]:  # v3.0.1 lags behind `pod get`
+            return json.dumps({"error": "pod not ready: no container reported yet"})
         if head == ["runpodctl", "pod", "get"]:
-            return json.dumps({"id": command[3], "costPerHr": 0.34})
+            return json.dumps({"id": command[3], "costPerHr": 0.34, "gpuId": "NVIDIA GeForce RTX 4090",
+                               "ssh": {"id": command[3], "ip": "203.0.113.7", "port": 10022,
+                                       "ssh_command": "ssh -i k root@203.0.113.7 -p 10022"}})
         if command[0] == "ssh" and command[-1] == "echo ready":
             return "ready\n"
         if command[0] == "rsync" and command[-2].endswith(":/workspace/status/") and self.local_status:
@@ -109,6 +111,13 @@ class FleetTests(unittest.TestCase):
             self.assertEqual(sorted(deleted), ["pod1", "pod2"])
             state = json.loads((Path(directory) / "cal" / "fleet.json").read_text())
             self.assertTrue(all(pod["terminated"] == "done" for pod in state["pods"].values()))
+            # An existing pod can be adopted instead of created.
+            before = runner.created
+            fleet.main(["--ssh-key", "/k", "launch", "cal2", "--grid", "grids/calibration.toml",
+                        "--pods", "1", "--attach", "existingpod", "--yes"], runner=runner)
+            self.assertEqual(runner.created, before)
+            adopted = json.loads((Path(directory) / "cal2" / "fleet.json").read_text())["pods"]["0"]
+            self.assertEqual((adopted["id"], adopted["ssh"]["port"]), ("existingpod", 10022))
             with self.assertRaises(SystemExit):  # A run name is never reused.
                 fleet.main(["launch", "cal", "--grid", "grids/calibration.toml", "--yes"], runner=runner)
 
