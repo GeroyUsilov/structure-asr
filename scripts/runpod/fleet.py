@@ -374,7 +374,9 @@ def command_launch(args, runner: Runner) -> None:
     for shard in range(args.pods):
         attach = args.attach[shard] if args.attach and shard < len(args.attach) else None
         try:
-            state["pods"][str(shard)] = start_pod(runner, args, state, shard, attach=attach)
+            state["pods"][str(shard)] = start_pod(
+                runner, args, state, shard, attach=attach, push_outputs=args.push_outputs
+            )
         finally:
             if not runner.dry_run:
                 save_state(state)
@@ -551,6 +553,9 @@ def build_parser() -> argparse.ArgumentParser:
     launch.add_argument("--volume-gb", type=int, default=40)
     launch.add_argument("--max-batch", type=int, default=64)
     launch.add_argument("--model-batch-size", type=int, default=32)
+    launch.add_argument("--push-outputs", action="store_true",
+                        help="seed each pod with results/runpod/<run>/grid so completed "
+                             "stages are skipped and only the remaining ones run")
     launch.add_argument("--ssh-timeout", type=float, default=900)
     launch.add_argument("--attach", nargs="+", metavar="POD_ID",
                         help="adopt these running pods for shards 0.. instead of creating them")

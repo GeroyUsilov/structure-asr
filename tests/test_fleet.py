@@ -130,11 +130,21 @@ class FleetTests(unittest.TestCase):
             self.assertEqual(sorted(deleted), ["pod1", "pod2"])
             state = json.loads((Path(directory) / "cal" / "fleet.json").read_text())
             self.assertTrue(all(pod["terminated"] == "done" for pod in state["pods"].values()))
+            # launch --push-outputs seeds a pod with already-synced stages.
+            (Path(directory) / "seeded" / "grid").mkdir(parents=True, exist_ok=True)
+            (Path(directory) / "seeded" / "grid" / "grid_plan.json").write_text("{}")
+            fleet.main(["--ssh-key", "/k", "launch", "seeded", "--grid",
+                        "grids/calibration.toml", "--pods", "1", "--push-outputs", "--yes"],
+                       runner=runner)
+            seeded = [c for c in runner.commands
+                      if c[0] == "rsync" and c[-2].endswith("seeded/grid/")]
+            self.assertEqual(len(seeded), 1)
+
             # relaunch on a run with nothing synced yet must not rsync a
             # missing directory (it used to strand the new pod).
             fleet.main(["--ssh-key", "/k", "relaunch", "cal", "--shard", "0"], runner=runner)
             pushes = [c for c in runner.commands
-                      if c[0] == "rsync" and c[-2].rstrip("/").endswith("grid")]
+                      if c[0] == "rsync" and c[-2].endswith("cal/grid/")]
             self.assertEqual(pushes, [])
             self.assertFalse(json.loads((Path(directory) / "cal" / "fleet.json").read_text())
                              ["pods"]["0"].get("terminated"))

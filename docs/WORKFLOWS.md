@@ -121,6 +121,9 @@ bash scripts/record_run.sh grids/calibration.toml 2026-11-02_cal-1 --outdir resu
   types from cheapest-preferred (`--gpu-types`), Community then Secure Cloud,
   skipping types `runpodctl gpu list` reports unavailable, and deletes any pod
   that offers no direct-TCP SSH (rsync needs it) within `--ssh-timeout`.
+- `launch --push-outputs` seeds each pod with `results/runpod/<run>/grid`, so
+  stages already synced are skipped and only the remaining ones run (used to add
+  a `[sample]` stage to a grid whose reconstruction stages were already done).
 - `run_shard.sh` encodes with ProstT5 batch 16 (`--encode-batch-size`) and
   samples with 32 (`--model-batch-size`): a 24 GB card reports ~22 GiB usable
   and batch 32 peaks near 22.4 GB, which OOMed the `tau_low` encode stage.
