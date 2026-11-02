@@ -298,7 +298,15 @@ def start_pod(runner: Runner, args, state: dict, shard: int, push_outputs: bool 
                                     check=False) or "null") if not runner.dry_run else None
         if isinstance(details, dict):
             pod["cost_per_hr"] = details.get("costPerHr")
-        deploy(runner, args, state, shard, pod, push_outputs)
+        try:
+            deploy(runner, args, state, shard, pod, push_outputs)
+        except Exception:
+            # Without this the pod keeps billing unreferenced: it is not in the
+            # saved state, because start_pod never returned.
+            if not attach:
+                print(f"shard {shard}: deploy failed; deleting {pod_id}", flush=True)
+                runner(["runpodctl", "pod", "delete", pod_id], check=False)
+            raise
         return pod
     raise RuntimeError(f"no pod could be started for shard {shard}:\n  " + "\n  ".join(tried))
 

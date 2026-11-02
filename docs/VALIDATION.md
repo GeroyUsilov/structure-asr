@@ -43,6 +43,15 @@ loading ESM2/ProstT5 and without running IQ-TREE.
     empty node lists and invalid start modes; `plan` counts chains and chain-steps.
   - The opt-in real-IQ-TREE test runs only when `ASR_IQTREE` is set. It passes
     with IQ-TREE 3.1.4 (official macOS arm64 release, sha256-verified).
+- Structural selection (`[fold]`, METHODS 7b) is covered on CPU with a fake
+  residue-wise 3Di map: a permissive threshold reproduces the legacy generator's
+  sequences and events exactly, an impossible threshold reverts every block and
+  leaves every node at the root, selection raises the tips' minimum 3Di identity
+  above both the threshold and the unselected run, block size sets the number of
+  predictions, `FoldSettings` separates checkpoints, and a `[fold]` grid without
+  an encoder is rejected. **Never run on a GPU or with real ProstT5**, so the
+  realized divergence, acceptance rates and cost of a real `[fold]` cell are
+  unmeasured.
 - `asr-grid plan grids/example.toml` reproduces the historical μ=1 (4,777) and
   documented μ=5 (23,896) call counts.
 - Real local IQ-TREE 3.1.4 run (`reconstruct` + `evaluate-dir`) on the bundled

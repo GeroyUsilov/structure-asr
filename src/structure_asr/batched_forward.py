@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Sequence
 
@@ -27,6 +27,7 @@ from forward_asr_benchmark.evolve import (
 )
 from forward_asr_benchmark.scoring import CompositeScorer, ConstantScorer, ScoreResult
 from forward_asr_benchmark.tree import tree_to_newick
+from structure_asr.fold_conservation import FoldFilter, FoldSettings
 
 BatchPredictor = Callable[[list[str], list[int]], np.ndarray]
 CHECKPOINT_SCHEMA = 2
@@ -53,6 +54,7 @@ class Cell:
     seed: int
     configuration: dict = field(default_factory=dict)
     scorer: object = field(default_factory=historical_scorer)
+    fold: FoldSettings | None = None
 
     def __post_init__(self) -> None:
         if self.mutation_scale < 0:
@@ -78,6 +80,9 @@ class Cell:
                 "mutation_scale": self.mutation_scale,
                 "proposal_temperature": self.proposal_temperature,
                 "seed": self.seed,
+                # Only present under structural selection, so legacy
+                # fingerprints (and their checkpoints) are unchanged.
+                **({"fold": self.fold.as_dict()} if self.fold is not None else {}),
             },
             sort_keys=True,
             separators=(",", ":"),
@@ -117,6 +122,14 @@ class _Lane:
     score: ScoreResult
     attempts: int
     events: list[MutationEvent] = field(default_factory=list)
+    # Structural selection only: the last fold-accepted state, where its block
+    # of draws began, and the fixed reference this lane compares against.
+    block_start: str = ""
+    block_score: ScoreResult | None = None
+    block_first_event: int = 0
+    reference: str = ""
+    blocks_accepted: int = 0
+    blocks_rejected: int = 0
 
     @property
     def remaining(self) -> int:
@@ -157,15 +170,32 @@ def simulate_cells(
     progress: Sequence[CellProgress | None] | None = None,
     edge_completed: Callable[[int, CellProgress], None] | None = None,
     batch_completed: Callable[[int], None] | None = None,
+    fold_encode: Callable[[list[str]], Sequence[str]] | None = None,
 ) -> list[CellProgress]:
     """Advance every incomplete edge of every cell, batching model passes.
 
     ``progress`` holds resumed per-cell state (completed edges only; an
     interrupted edge restarts from its own fresh RNG stream, as in the serial
     checkpoint). ``edge_completed(cell_index, state)`` is called after each edge.
+
+    ``fold_encode`` maps AA sequences to predicted 3Di in one batched call and
+    is required by any cell carrying ``FoldSettings``: those cells keep a block
+    of draws only if the fold survived (see
+    ``structure_asr.fold_conservation``). Without fold settings the RNG call
+    sequence, and so the output, is exactly the legacy generator's.
     """
     if max_batch < 1:
         raise ValueError("max_batch must be positive")
+    folded = [cell for cell in cells if cell.fold is not None]
+    if folded and fold_encode is None:
+        raise ValueError("cells with [fold] settings need a fold_encode callable")
+    filters: dict[int, FoldFilter] = {}
+    if fold_encode is not None:
+        filters = {
+            index: FoldFilter(cell.fold, fold_encode)
+            for index, cell in enumerate(cells)
+            if cell.fold is not None
+        }
     states = [
         (progress[index] if progress is not None and progress[index] is not None else new_progress(cell))
         for index, cell in enumerate(cells)
@@ -194,6 +224,12 @@ def simulate_cells(
                     lane = _Lane(
                         cell_index, edge_index, rng, sequence, state.scores[parent_name], attempts
                     )
+                    if cell.fold is not None:
+                        lane.block_start = sequence
+                        lane.block_score = state.scores[parent_name]
+                        lane.reference = (
+                            cell.root_sequence if cell.fold.reference == "root" else sequence
+                        )
                     if attempts == 0:
                         finish(lane)
                         changed = True
@@ -252,6 +288,43 @@ def simulate_cells(
             lane.score = proposed_score
             if lane.remaining == 0:
                 finished.append(lane)
+        if filters:
+            due = [
+                lane
+                for lane in batch
+                if cells[lane.cell].fold is not None
+                and (
+                    len(lane.events) - lane.block_first_event >= cells[lane.cell].fold.block
+                    or lane.remaining == 0
+                )
+            ]
+            if due:
+                # One batched 3Di prediction per step, covering every lane's
+                # candidate and any reference not encoded yet.
+                for cell_index in {lane.cell for lane in due}:
+                    filters[cell_index].prepare(
+                        [lane.sequence for lane in due if lane.cell == cell_index]
+                        + [lane.reference for lane in due if lane.cell == cell_index]
+                        + [lane.block_start for lane in due if lane.cell == cell_index]
+                    )
+                for lane in due:
+                    fold_filter = filters[lane.cell]
+                    accepted, _identity = fold_filter.accepts(
+                        lane.sequence, lane.block_start, lane.reference, lane.rng
+                    )
+                    if accepted:
+                        lane.blocks_accepted += 1
+                        lane.block_start = lane.sequence
+                        lane.block_score = lane.score
+                    else:
+                        lane.blocks_rejected += 1
+                        # The draws happened but did not persist: the block's
+                        # events stay in the record, marked unaccepted.
+                        for index in range(lane.block_first_event, len(lane.events)):
+                            lane.events[index] = replace(lane.events[index], accepted=False)
+                        lane.sequence = lane.block_start
+                        lane.score = lane.block_score
+                    lane.block_first_event = len(lane.events)
         if finished:
             for lane in finished:
                 lanes.remove(lane)

@@ -22,6 +22,7 @@ from forward_asr_benchmark.evolve import (
 from forward_asr_benchmark.io import read_fasta, write_fasta
 from structure_asr import grid as grid_module
 from structure_asr import iqtree
+from structure_asr.fold_conservation import FoldFilter, FoldSettings, three_di_identity
 from structure_asr.batched_forward import (
     Cell,
     finished_result,
@@ -120,6 +121,109 @@ class BatchedForwardTests(unittest.TestCase):
             write_checkpoint(path, cell, state)
             with self.assertRaises(RuntimeError):
                 load_checkpoint(path, other)
+
+
+ALPHABET = "ACDEFGHIKLMNPQRSTVWY"
+THREEDI = "ACDEFGHIKLMNPQRSTVWY"
+
+
+def fake_three_di(sequences):
+    """Residue-wise AA->3Di map, so 3Di identity tracks AA identity."""
+    return ["".join(THREEDI[ALPHABET.index(residue) % len(THREEDI)] for residue in sequence)
+            for sequence in sequences]
+
+
+class FoldConservationTests(unittest.TestCase):
+    root = "MKTAYIAKQRQISFVKSHFSRQ"
+
+    def cell(self, fold, mu=3.0, tau=1.0, seed=5):
+        return Cell("fold", tree(), self.root, mu, tau, seed, fold=fold)
+
+    def run_cell(self, fold, encode=fake_three_di, **kwargs):
+        cell = self.cell(fold, **kwargs)
+        state = simulate_cells([cell], batched, max_batch=4, fold_encode=encode)[0]
+        return cell, finished_result(cell, state)
+
+    def test_an_impossible_threshold_reverts_every_block(self):
+        _cell, result = self.run_cell(FoldSettings(min_identity=1.0, block=2))
+        self.assertTrue(all(sequence == self.root for sequence in result.sequences.values()))
+        self.assertTrue(result.events and not any(event.accepted for event in result.events))
+
+    def test_a_permissive_threshold_reproduces_the_legacy_generator(self):
+        reference = serial(self.root, 3.0, 1.0, 5)
+        _cell, result = self.run_cell(FoldSettings(min_identity=0.0, block=2))
+        self.assertEqual(result.sequences, reference.sequences)
+        self.assertEqual(result.events, reference.events)
+
+    def test_structural_selection_keeps_tips_closer_to_the_root_fold(self):
+        def identity_to_root(result):
+            root_3di, = fake_three_di([self.root])
+            tips = [result.sequences[name] for name in ("a", "b", "c", "d", "e")]
+            return min(three_di_identity(encoded, root_3di)
+                       for encoded in fake_three_di(tips))
+
+        free = identity_to_root(serial(self.root, 3.0, 1.0, 5))
+        _cell, selected = self.run_cell(FoldSettings(min_identity=0.8, block=1))
+        self.assertGreaterEqual(identity_to_root(selected), 0.8)
+        self.assertGreater(identity_to_root(selected), free)
+
+    def test_a_rejected_block_keeps_its_draws_in_the_record_as_unaccepted(self):
+        _cell, result = self.run_cell(FoldSettings(min_identity=0.95, block=4))
+        self.assertTrue(any(not event.accepted for event in result.events))
+        self.assertTrue(any(event.accepted for event in result.events))
+        # Rejections come in whole blocks, so a node's realized changes only
+        # ever reflect accepted events.
+        for name, sequence in result.sequences.items():
+            if name == "Root":
+                continue
+            self.assertEqual(len(sequence), len(self.root))
+
+    def test_block_size_sets_the_number_of_3di_predictions(self):
+        counts = {}
+        for block in (1, 5):
+            calls = []
+
+            def counting(sequences, calls=calls):
+                calls.extend(sequences)
+                return fake_three_di(sequences)
+
+            self.run_cell(FoldSettings(min_identity=0.5, block=block), encode=counting)
+            counts[block] = len(calls)
+        self.assertLess(counts[5], counts[1])
+
+    def test_metropolis_always_keeps_a_block_that_improves_identity(self):
+        fold = FoldSettings(criterion="metropolis", beta=50.0, block=1)
+        filter_ = FoldFilter(fold, fake_three_di)
+        better, worse = self.root, "A" + self.root[1:]
+        filter_.prepare([self.root, better, worse])
+        rng = np.random.default_rng(0)
+        self.assertTrue(filter_.accepts(better, worse, self.root, rng)[0])
+
+    def test_fold_settings_are_part_of_the_cell_fingerprint(self):
+        legacy = self.cell(None)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "checkpoint.json"
+            cell, _result = self.run_cell(FoldSettings(min_identity=0.5, block=2))
+            state = simulate_cells([cell], batched, max_batch=4, fold_encode=fake_three_di)[0]
+            write_checkpoint(path, cell, state)
+            with self.assertRaises(RuntimeError):
+                load_checkpoint(path, legacy)
+
+    def test_a_fold_cell_without_an_encoder_is_rejected(self):
+        with self.assertRaises(ValueError):
+            simulate_cells([self.cell(FoldSettings())], batched)
+
+    def test_invalid_fold_settings_are_rejected(self):
+        for payload in ({"reference": "tip"}, {"criterion": "softmax"}, {"block": 0},
+                        {"min_identity": 1.5}, {"beta": -1.0}, {"predictor": "cnn"},
+                        {"unknown": 1}):
+            with self.assertRaises(ValueError):
+                FoldSettings.from_toml(payload)
+
+    def test_three_di_identity_requires_matching_lengths(self):
+        with self.assertRaises(ValueError):
+            three_di_identity("AAA", "AA")
+
 
 
 def write_grid(directory: Path, sample: str = "", **asr) -> Path:

@@ -191,6 +191,54 @@ Using the true topology is a known-tree assumption that favors reconstruction
 relative to practice. The ESM2 generator is not a Markov substitution process,
 so every candidate model is misspecified; BIC picks the best available one.
 
+## 7b. Structural selection in forward generation (`[fold]`, opt-in)
+
+A second generator mode, off unless a grid defines `[fold]`
+(`structure_asr.fold_conservation`). The legacy generator accepts every
+masked-site draw, so nothing preserves the root's fold: measured on
+`experiments/2026-11-02_divergence`, median tip 3Di identity to the root falls
+from 0.72 (μ=1, τ=1.5) to 0.12 (μ=4, τ=2), where most tips encode to almost all
+D (coil).
+
+Under `[fold]`, ESM2 proposes and a 3Di prediction decides. Each lane
+accumulates `block` accepted draws, then its candidate is encoded with the same
+greedy ProstT5 `<AA2fold>` path used for the 3Di tips and the truth, and the
+block is kept or reverted whole:
+
+- `reference = "root"` compares with the root's 3Di, bounding structural
+  divergence across the whole tree; `"parent"` compares with the edge's
+  starting sequence, bounding change per edge and letting structure drift with
+  depth.
+- `criterion = "threshold"` keeps a block when 3Di identity to the reference is
+  at least `min_identity`; `"metropolis"` accepts with probability
+  min(1, exp(−β(d_new − d_old))) for 3Di distance d = 1 − identity, and draws
+  once per block from the lane's RNG stream.
+
+Consequences, all of which separate these cells from every historical run:
+
+- **μ is no longer a pure attempt-rate multiplier.** Reverted blocks consume
+  attempts without realizing substitutions, so realized divergence at a given μ
+  is lower and depends on the criterion. `events.tsv` keeps every draw, with a
+  reverted block's rows marked `accepted=False`; the manifest records
+  `realized_residue_changes` (accepted only) and `unaccepted_events`.
+- **`FoldSettings` enters the cell fingerprint**, so checkpoints never mix
+  across modes, and the simulation manifest records the settings.
+- With `reference = "root"` and a hard threshold, tip structural divergence is
+  capped by construction: tips accumulate AA change but sit at or above
+  `min_identity`. That is the intended regime (saturated sequence, conserved
+  fold) and also a ceiling to report, not a discovery.
+
+Cost is one batched 3Di prediction per block per lane, issued in the same step
+as the ESM2 pass, so about attempts/`block` predictions per cell. ProstT5's
+encoder-plus-CNN head would be far cheaper but is a different predictor from the
+measurement path; it is not implemented.
+
+**Circularity.** Selecting simulated sequences for fold conservation and then
+testing a fold-aware reconstruction method on them assumes exactly what the
+method exploits. Report realized structural divergence next to reconstruction
+accuracy for any `[fold]` dataset, and never present these cells as evidence
+that real families conserve structure.
+
 ## 8. Batched joint sampling over λ (`asr-grid sample`)
 
 The kernel of §3 is unchanged; `asr-sample` and the grid stage share one

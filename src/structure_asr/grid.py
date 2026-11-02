@@ -44,6 +44,7 @@ from structure_asr.batched_forward import (
     write_checkpoint,
 )
 from structure_asr.evaluation import read_fasta as read_ordered_fasta
+from structure_asr.fold_conservation import FoldSettings
 from structure_asr.evaluation import score_dataset, topology_mapping, vertex_signatures, write_tsv
 from structure_asr.forward import choose_root, exact_planned_attempts, rate_label, sha256
 from structure_asr.posteriors import load_state, node_sort_key
@@ -142,6 +143,7 @@ class Grid:
     cells: list[CellSpec]
     asr: dict
     sample: SampleSettings | None = field(default=None)
+    fold: FoldSettings | None = field(default=None)
 
     def __post_init__(self) -> None:
         self.tree = load_tree(self.tree_path)
@@ -179,6 +181,7 @@ class Grid:
             proposal_temperature=spec.proposal_temperature,
             seed=spec.seed,
             configuration=self.configuration(spec),
+            fold=self.fold,
         )
 
     def planned_attempts(self, spec: CellSpec) -> int:
@@ -232,6 +235,7 @@ def load_grid(path: Path, outdir: Path | None = None) -> Grid:
         cells=specs,
         asr=asr,
         sample=SampleSettings.from_toml(config["sample"]) if "sample" in config else None,
+        fold=FoldSettings.from_toml(config["fold"]) if "fold" in config else None,
     )
 
 
@@ -336,8 +340,15 @@ def run_forward(
     specs: list[CellSpec],
     max_batch: int,
     on_edge=None,
+    fold_encode=None,
 ) -> list[str]:
-    """Simulate incomplete cells; returns labels written. ``predictor`` is batched."""
+    """Simulate incomplete cells; returns labels written. ``predictor`` is batched.
+
+    ``fold_encode`` is required when the grid has a ``[fold]`` section: it maps
+    AA sequences to predicted 3Di for structural selection.
+    """
+    if grid.fold is not None and fold_encode is None:
+        raise ValueError("this grid's [fold] section needs a fold_encode callable")
     pending = []
     for spec in specs:
         if forward_complete(grid, spec):
@@ -384,6 +395,7 @@ def run_forward(
             progress=[progress[index] for index in remaining],
             edge_completed=lambda position, state: edge_completed(index_map[position], state),
             batch_completed=getattr(predictor, "batch_completed", None),
+            fold_encode=fold_encode,
         )
     return written
 
@@ -407,6 +419,7 @@ def write_cell_outputs(grid: Grid, spec: CellSpec, cell: Cell, state, max_batch:
                 "mutation_scale": spec.mutation_scale,
                 "proposal_temperature": spec.proposal_temperature,
                 "seed": spec.seed,
+                **({"fold": grid.fold.as_dict()} if grid.fold is not None else {}),
                 "tree": str(grid.tree_path),
                 "root_fasta": str(root_path),
                 "grid": grid.name,
@@ -419,8 +432,11 @@ def write_cell_outputs(grid: Grid, spec: CellSpec, cell: Cell, state, max_batch:
             "node_count": len(result.sequences),
             "event_count": len(result.events),
             "realized_residue_changes": sum(
-                event.old_state != event.new_state for event in result.events
+                event.old_state != event.new_state
+                for event in result.events
+                if event.accepted
             ),
+            "unaccepted_events": sum(not event.accepted for event in result.events),
         },
     )
 
@@ -901,6 +917,33 @@ def default_iqtree(value: str | None, grid_asr: dict | None = None) -> str:
     return value or os.environ.get("ASR_IQTREE") or str((grid_asr or {}).get("iqtree", "iqtree3"))
 
 
+def make_fold_encoder(args, grid: Grid):
+    """Batched AA->3Di predictor for [fold] selection, loaded once on first use.
+
+    Uses the same greedy ProstT5 path as the `encode` stage and the sampler, so
+    selection and measurement share one predictor.
+    """
+    from structure_asr.prostt5 import load_prostt5
+
+    if grid.fold.predictor != "greedy":  # pragma: no cover - rejected at parse time
+        raise NotImplementedError(f"[fold].predictor {grid.fold.predictor!r} is not implemented")
+    loaded: dict = {}
+
+    def encode(sequences: list[str]) -> list[str]:
+        if not loaded:
+            torch_module, tokenizer, model, device, resolved = load_prostt5(
+                args.fold_model, args.device, grid.dtype
+            )
+            loaded.update(torch=torch_module, tokenizer=tokenizer, model=model,
+                          device=device, resolved=str(resolved))
+        return sampling.encode_sequences(
+            list(sequences), loaded["tokenizer"], loaded["model"], loaded["device"],
+            loaded["torch"], args.fold_batch_size, args.fold_max_chunk_aa,
+        )
+
+    return encode
+
+
 def command_forward(args, grid: Grid) -> None:
     from structure_asr.esm2 import make_batched_site_predictor
 
@@ -915,6 +958,10 @@ def command_forward(args, grid: Grid) -> None:
             done += sum(len(events) for events in payload["events_by_edge"].values())
     if args.validate_only:
         print(f"{len(specs)} cells in shard; {total - done:,} ESM2 calls remain", flush=True)
+        if grid.fold is not None:
+            print(f"[fold] {grid.fold.criterion} vs {grid.fold.reference}, block "
+                  f"{grid.fold.block}: about {(total - done) // grid.fold.block:,} "
+                  "extra ProstT5 predictions", flush=True)
         return
     predictor = TimedPredictor(
         make_batched_site_predictor(grid.model_name, args.device, grid.dtype),
@@ -922,7 +969,10 @@ def command_forward(args, grid: Grid) -> None:
         total,
         done,
     )
-    written = run_forward(grid, predictor, specs=specs, max_batch=args.max_batch)
+    written = run_forward(
+        grid, predictor, specs=specs, max_batch=args.max_batch,
+        fold_encode=make_fold_encoder(args, grid) if grid.fold is not None else None,
+    )
     predictor.progress.close()
     print(f"Forward simulation complete; wrote {len(written)} cells", flush=True)
 
@@ -1017,6 +1067,11 @@ def build_parser() -> argparse.ArgumentParser:
     forward.add_argument("--max-batch", type=int, default=64)
     forward.add_argument("--device", default="cuda")
     forward.add_argument("--validate-only", action="store_true")
+    forward.add_argument("--fold-model", default="Rostlab/ProstT5",
+                         help="3Di predictor for [fold] structural selection")
+    forward.add_argument("--fold-batch-size", type=int, default=32,
+                         help="[fold] 3Di predictions per ProstT5 call (~0.4 GB of GPU memory each)")
+    forward.add_argument("--fold-max-chunk-aa", type=int, default=500)
     encode = grid_command("encode", "ProstT5 AA->3Di for all simulated nodes (GPU)")
     encode.add_argument("--model", default="Rostlab/ProstT5")
     encode.add_argument("--device", default="cuda")

@@ -77,6 +77,15 @@ is a separate command, resumable, and skips completed cells:
 | `evaluate` | CPU | ASR + sample outputs + truth | `evaluation/{dataset,node,sample}_summary.tsv`, mappings, site table |
 | `status` | any | — | prints per-cell completion |
 
+An optional `[fold]` section turns on structural selection during `forward`
+(METHODS 7b): ESM2 proposes, ProstT5 decides, and a block of draws that loses
+the root's fold is reverted. It makes `forward` a GPU stage that loads both
+models, and `--fold-batch-size` (default 32, about 0.4 GB of GPU memory per
+sequence) caps the extra ProstT5 calls. `forward --validate-only` prints how
+many extra predictions a shard needs. Cells simulated this way are a separate
+dataset from legacy μ/τ cells; `grids/fold_conserved.toml` is the worked
+example.
+
 Cells live in `<outdir>/mu_<r>__tau_<t>__seed_<s>/`. `forward` batches one
 masked ESM2 pass over up to `--max-batch` edges drawn from all cells (see
 METHODS §6). `--shard i/n` splits cells round-robin across GPUs or pods;

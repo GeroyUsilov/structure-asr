@@ -1,0 +1,32 @@
+# Structural selection: high AA divergence on a conserved fold (METHODS 7b).
+# ESM2 proposes, ProstT5 decides; a block of draws that loses the root's fold is
+# reverted. These cells are NOT comparable with legacy mu/tau cells: reverted
+# blocks consume attempts, so realized divergence at a given mu is lower.
+[grid]
+name = "fold_conserved"
+outdir = "../results/grids/fold_conserved"
+tree = "../examples/ef_tu/reference/AB_eftu_rerooted.tre"
+alignment = "../examples/ef_tu/reference/EFTu_all_alignment.fasta"
+root_accession = "163840912"
+rates = [4, 8]
+proposal_temperatures = [1.5]
+seeds = [731024]
+model_name = "facebook/esm2_t33_650M_UR50D"
+dtype = "float16"
+max_attempts_per_cell = 100000
+
+# min_identity 0.65 is the low end of the mu=1, tau=1.5 tips, whose 3Di identity
+# to the root ran 0.63-0.78 (experiments/2026-11-02_divergence).
+[fold]
+reference = "root"
+criterion = "threshold"
+min_identity = 0.65
+block = 10
+predictor = "greedy"
+
+[asr]
+iqtree = "iqtree3"              # or set ASR_IQTREE / pass --iqtree
+threads_per_job = 1
+aa_model = "MFP"                # ModelFinder, BIC
+three_di_matrix = "../.cache/models/3di/Q.3Di.AF"   # scripts/fetch_3di_matrix.sh
+three_di_model_name = "Q3DI_AF"
