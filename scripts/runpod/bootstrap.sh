@@ -55,7 +55,8 @@ if [ ! -x "$IQTREE" ]; then
   curl -sSL -o "$tarball" \
     "https://github.com/iqtree/iqtree3/releases/download/v$IQTREE_VERSION/iqtree-$IQTREE_VERSION-$flavor.tar.gz"
   echo "$sha  $tarball" | sha256sum -c -
-  tar -xzf "$tarball" -C "$TOOLS"
+  # Pod /workspace (network FS) refuses chown, so keep the extracting user as owner.
+  tar --no-same-owner -xzf "$tarball" -C "$TOOLS"
 fi
 "$IQTREE" --version | head -1
 

@@ -196,10 +196,11 @@ def shard_job(state: dict, shard: int) -> str:
         f"(bash scripts/runpod/bootstrap.sh || "
         f"{{ echo bootstrap exit $? > {REMOTE_WORK}/status/FAILED; exit 1; }}) && {run_shard}"
     )
-    # The log directory must exist before the redirect: a failed redirect on a
-    # backgrounded command fails silently and nothing runs.
+    # The log directory must exist before the redirect (a failed redirect on a
+    # backgrounded command fails silently), and only nohup may be backgrounded:
+    # a backgrounded `a && b` subshell holds the ssh session open for the whole job.
     return (f"mkdir -p {REMOTE_WORK}/logs {REMOTE_WORK}/status && cd {REMOTE_REPO} && "
-            f"nohup bash -c {shlex.quote(job)} > {REMOTE_WORK}/logs/shard.log 2>&1 < /dev/null &")
+            f"{{ nohup bash -c {shlex.quote(job)} > {REMOTE_WORK}/logs/shard.log 2>&1 < /dev/null & }}")
 
 
 # ------------------------------------------------------------------- launch
@@ -371,6 +372,27 @@ def command_launch(args, runner: Runner) -> None:
           f"Next: fleet.py sync {args.run} --every 10 --terminate-done", flush=True)
 
 
+def command_redeploy(args, runner: Runner) -> None:
+    """Ship the current commit to a shard's existing pod and restart its job.
+
+    For iterating on a failed pod without paying for a new one: bootstrap is
+    idempotent and the shard's stages resume from their checkpoints.
+    """
+    state = load_state(args.run)
+    pod = state["pods"][str(args.shard)]
+    if pod.get("terminated"):
+        raise SystemExit(f"shard {args.shard}'s pod was terminated; use relaunch")
+    running = runner(ssh_command(pod, "pgrep -f 'run_shard.sh|bootstrap.sh' || true", args.ssh_key))
+    if running.strip():
+        raise SystemExit(f"shard {args.shard} is still running (pids {running.split()})")
+    state["commit"] = committed_head(state["grid"])
+    args.bundle = make_bundle(runner, state["commit"])
+    runner(ssh_command(pod, f"rm -f {REMOTE_WORK}/status/FAILED {REMOTE_WORK}/status/DONE", args.ssh_key))
+    deploy(runner, args, state, args.shard, pod, push_outputs=False)
+    save_state(state)
+    print(f"shard {args.shard}: redeployed {state['commit'][:10]} to {pod['id']}", flush=True)
+
+
 def command_relaunch(args, runner: Runner) -> None:
     state = load_state(args.run)
     old = state["pods"].get(str(args.shard))
@@ -504,6 +526,9 @@ def build_parser() -> argparse.ArgumentParser:
     relaunch.add_argument("--shard", type=int, required=True)
     relaunch.add_argument("--volume-gb", type=int, default=40)
     relaunch.add_argument("--ssh-timeout", type=float, default=900)
+    redeploy = sub.add_parser("redeploy", help="ship the current commit to a shard's pod and restart it")
+    redeploy.add_argument("run")
+    redeploy.add_argument("--shard", type=int, required=True)
     status = sub.add_parser("status", help="pods, elapsed time, cost and stage")
     status.add_argument("run")
     sync = sub.add_parser("sync", help="rsync outputs and logs home; optionally loop and clean up")
@@ -525,7 +550,8 @@ def main(argv: list[str] | None = None, runner: Runner | None = None) -> None:
     args = build_parser().parse_args(argv)
     runner = runner or Runner(dry_run=getattr(args, "dry_run", False))
     {
-        "launch": command_launch, "relaunch": command_relaunch, "status": command_status,
+        "launch": command_launch, "relaunch": command_relaunch, "redeploy": command_redeploy,
+        "status": command_status,
         "sync": command_sync, "logs": command_logs, "terminate": command_terminate,
     }[args.command](args, runner)
 

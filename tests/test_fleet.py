@@ -85,14 +85,17 @@ class FleetTests(unittest.TestCase):
         subprocess.run(["bash", "-n", "-c", job], check=True)
         self.assertIn("run_shard.sh grids/calibration.toml 2/3", job)
         self.assertIn("bootstrap.sh", job)
-        self.assertTrue(job.rstrip().endswith("&"))
+        self.assertTrue(job.rstrip().endswith("& }"))
         # Run it against a fake workspace: the log must appear even though logs/ did not exist.
         with tempfile.TemporaryDirectory() as directory:
             fake = job.replace(fleet.REMOTE_WORK, directory).replace(
                 f"cd {directory}/structure-asr", f"cd {directory}").replace(
                 "bash scripts/runpod/bootstrap.sh", "true").replace(
                 "bash scripts/runpod/run_shard.sh", "echo run_shard")
-            subprocess.run(["bash", "-c", fake + " wait"], check=True)
+            # The ssh session must not wait for the job: the command returns at once.
+            subprocess.run(["bash", "-c", fake.replace("echo run_shard", "sleep 3; echo run_shard")],
+                           check=True, timeout=2, stdout=subprocess.PIPE)
+            subprocess.run(["sleep", "3.5"])
             self.assertIn("run_shard grids/calibration.toml 2/3",
                           (Path(directory) / "logs" / "shard.log").read_text())
 
