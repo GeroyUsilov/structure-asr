@@ -178,7 +178,7 @@ def ssh_command(pod: dict, remote: str, key: str | None) -> list[str]:
 
 def rsync_command(pod: dict, source: str, dest: str, key: str | None) -> list[str]:
     ssh = ["ssh", *SSH_OPTIONS, "-p", str(pod["ssh"]["port"])] + (["-i", key] if key else [])
-    return ["rsync", "-az", "--partial", "-e", shlex.join(ssh), source, dest]
+    return ["rsync", "-rltz", "--partial", "-e", shlex.join(ssh), source, dest]
 
 
 def remote(pod: dict) -> str:
