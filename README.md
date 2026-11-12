@@ -9,10 +9,12 @@ ancestor in sequence (AA identity) and in structure (3Di identity).
 
 ## Method
 
-1. **Simulation with known ancestors.** Sequences evolve down the EF-Tu
-   phylogeny (39 tips, 396 residues) by repeated masked-site resampling from
-   ESM2, at temperature τ and attempt rate μ. Every ancestor is saved as
-   ground truth.
+1. **Simulation with known ancestors.** True ancestors of natural proteins are
+   unobserved, so the method is benchmarked on synthetic data. Starting from a
+   natural EF-Tu sequence (396 residues), sequences are evolved in silico down
+   the EF-Tu phylogeny (39 tips) by repeated masked-site resampling from ESM2,
+   at temperature τ and attempt rate μ. Every simulated ancestor is saved, so
+   reconstructions can be scored directly against the truth.
 2. **Reconstruction.** From the tips only, IQ-TREE on the known topology
    reconstructs AA posteriors (ModelFinder) and 3Di posteriors (ProstT5-encoded
    tips, Q.3Di.AF matrix). Nodes are paired across trees and with the truth
@@ -27,9 +29,7 @@ Equations and conventions: [docs/METHODS.md](docs/METHODS.md).
 
 ## Status
 
-Results so far come from simulated evolution, where the true ancestors are
-known and reconstructions can be scored against them directly. The 3Di term's
-effect is regime-dependent: it can improve structural fidelity
+The 3Di term's effect is regime-dependent: it can improve structural fidelity
 while retaining AA identity, or trade AA identity for structure, and it degrades
 AA fidelity where the simulated fold is lost. See [experiments/](experiments/).
 
