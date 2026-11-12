@@ -15,7 +15,7 @@ from pathlib import Path
 
 from Bio import Phylo
 
-from forward_asr_benchmark.tree import load_tree
+from structure_asr.simulation.tree import load_tree
 
 
 ROUNDING_FLOOR = 5e-6

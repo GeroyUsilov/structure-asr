@@ -1,0 +1,17 @@
+# CPU environment for tests, the example replay, IQ-TREE ASR and evaluation.
+#   conda env create -f environment.yml && conda activate structure-asr
+# GPU stages (ESM2, ProstT5) run on RunPod with requirements-gpu.txt instead (README, docs/WORKFLOWS.md).
+# IQ-TREE is not listed here: the grid pins the official 3.1.4 release binary (docs/WORKFLOWS.md).
+name: structure-asr
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.11
+  - numpy>=1.24
+  - biopython>=1.81
+  - tqdm>=4.66
+  - pandas>=2
+  - matplotlib>=3.7
+  - pip
+  - pip:
+      - --no-deps -e .

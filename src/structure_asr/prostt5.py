@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
 
-from forward_asr_benchmark.io import read_fasta, write_fasta
+from structure_asr.simulation.io import read_fasta, write_fasta
 
 
 MODEL_ID = "Rostlab/ProstT5"

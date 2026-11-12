@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from forward_asr_benchmark.dca import DcaModel
+from structure_asr.simulation.dca import DcaModel
 
 
 def make_model() -> DcaModel:

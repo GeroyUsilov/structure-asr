@@ -5,12 +5,12 @@ from pathlib import Path
 
 from Bio import Phylo
 
-from runpod_paper_tree_ofs.prepare_paper_tree import (
+from structure_asr.ofs.prepare_paper_tree import (
     deterministic_subtree,
     mean_root_to_leaf,
     normalize_mean_root_to_leaf,
 )
-from runpod_paper_tree_ofs.run_sweep import planned_attempts
+from structure_asr.ofs.run_sweep import planned_attempts
 
 
 class PaperTreeRunpodTests(unittest.TestCase):

@@ -10,3 +10,6 @@ __pycache__/
 /.cache/
 *.tar.gz
 *.zip
+.ipynb_checkpoints/
+.mypy_cache/
+.ruff_cache/

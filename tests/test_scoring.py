@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from forward_asr_benchmark.scoring import (
+from structure_asr.simulation.scoring import (
     AlphaFoldUncertaintyScorer,
     CachedProfilePredictor,
     PseudoPerplexityScorer,

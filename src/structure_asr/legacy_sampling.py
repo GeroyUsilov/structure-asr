@@ -23,7 +23,7 @@ from typing import Iterable
 import numpy as np
 from tqdm.auto import tqdm
 
-from forward_asr_benchmark.io import write_fasta
+from structure_asr.simulation.io import write_fasta
 from structure_asr.prostt5 import encode_batch, load_prostt5
 from structure_asr.posteriors import (
     NodePosterior, node_sort_key, load_state, sequence_log_probability,

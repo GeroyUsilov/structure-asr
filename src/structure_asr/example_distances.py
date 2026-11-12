@@ -2,7 +2,7 @@
 import argparse
 from pathlib import Path
 
-from runpod_exact_mlm_ef_tu_sweep.analyze_temperature_sweep import (
+from structure_asr.analysis.temperature_sweep import (
     MUS, TAUS, condition_slug, read_fasta, validate_records, pairwise_hamming, plot_ecdfs,
 )
 

@@ -142,3 +142,33 @@ installation include workflows, corrected Python requirement to 3.11+, replaced
 Glu/Gln absolute data paths with relative paths and optional font fallback,
 added replay entry points, examples, tests and documentation. The numerical
 simulation/sampling kernels, RNG order and model generation settings are unchanged.
+
+### 0.3.0 package consolidation
+
+Code now lives in one import package, `structure_asr`. Before this release it
+was spread across five top-level packages:
+
+| Old location | New location |
+|---|---|
+| `forward_asr_benchmark.*` | `structure_asr.simulation.*` |
+| `runpod_exact_mlm_ef_tu_sweep.analyze_3di_hamming` / `analyze_aa_hamming` / `analyze_temperature_sweep` | `structure_asr.analysis.hamming_3di` / `hamming_aa` / `temperature_sweep` |
+| `runpod_exact_mlm_ef_tu_sweep.convert_ground_truth_nodes_to_3di` | `structure_asr.analysis.encode_truth_nodes` |
+| `runpod_exact_mlm_smoke.run_smoke` (+ `root.fasta`, `tiny_tree.nwk`) | `structure_asr.smoke.run_smoke` |
+| `runpod_paper_tree_ofs.*` | `structure_asr.ofs.*` |
+
+Each old module path is still a shim. It replaces itself in `sys.modules` with
+the new module, so imports, private names, monkeypatching and `python -m` keep
+working. The earlier `import *` shims (`convert_tips_to_3di`,
+`evaluate_asr_ground_truth`, `run_sweep`, `esm2_adapter`) are unchanged.
+
+Generated configs deliberately keep writing the old factory strings
+(`runpod_exact_mlm_smoke.esm2_adapter:make_site_predictor`,
+`runpod_paper_tree_ofs.ofs_adapter:make_ofs_scorer`). Those strings feed the
+forward-checkpoint fingerprint, so changing them would block resuming existing
+checkpoints. No function bodies changed, apart from import lines.
+
+Verification status: the move was committed without re-running
+`scripts/check.sh` or the equivalence comparison. Before merging to `main`, run
+the check and confirm that fake-encoder grid outputs and the CPU replay are
+byte-identical to 0.2.0. Run-to-run timestamps in manifests and timing tables
+are expected to differ.

@@ -17,7 +17,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from forward_asr_benchmark.io import read_fasta
+from structure_asr.simulation.io import read_fasta
 
 ASR_OUTPUT_SUFFIXES = (".state", ".treefile", ".iqtree", ".log")
 # IQ-TREE upper-cases -mset names before lookup, so definitions must be upper case.

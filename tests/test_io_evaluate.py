@@ -5,10 +5,10 @@ from pathlib import Path
 
 from Bio import Phylo
 
-from forward_asr_benchmark.evaluate import compare_reconstructions
-from forward_asr_benchmark.evolve import EvolutionResult, MutationEvent
-from forward_asr_benchmark.io import write_fasta, write_run
-from forward_asr_benchmark.scoring import ScoreResult
+from structure_asr.simulation.evaluate import compare_reconstructions
+from structure_asr.simulation.evolve import EvolutionResult, MutationEvent
+from structure_asr.simulation.io import write_fasta, write_run
+from structure_asr.simulation.scoring import ScoreResult
 
 
 class OutputTests(unittest.TestCase):

@@ -4,10 +4,25 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "structure-asr"
-version = "0.2.0"
-description = "Forward protein evolution, structure-guided ancestral sampling, and reproducible benchmarks"
+version = "0.3.0"
+description = "Structure-informed ancestral sequence reconstruction: forward protein evolution with saved ground truth, AA/3Di ancestral sampling, and reproducible benchmarks"
 readme = "README.md"
 requires-python = ">=3.11"
+keywords = [
+  "ancestral sequence reconstruction",
+  "phylogenetics",
+  "protein language models",
+  "3Di",
+  "ProstT5",
+  "ESM2",
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Bio-Informatics",
+  "Private :: Do Not Upload",
+]
 dependencies = [
   "biopython>=1.81",
   "numpy>=1.24",
@@ -15,20 +30,28 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Plotting and tables for the CPU replay and analyses.
 analysis = ["matplotlib>=3.7", "pandas>=2"]
 test = ["matplotlib>=3.7", "pandas>=2"]
+# GPU stages (ESM2, ProstT5) additionally need PyTorch plus requirements-gpu.txt; run them on RunPod.
 
 [project.scripts]
-forward-asr = "forward_asr_benchmark.cli:main"
+# One command per pipeline stage (see README, "How the pipeline fits together").
 asr-evolve = "structure_asr.forward:main"
+asr-encode = "structure_asr.prostt5:main"
 asr-sample = "structure_asr.sampling:main"
 asr-sample-legacy = "structure_asr.legacy_sampling:main"
-asr-encode = "structure_asr.prostt5:main"
 asr-grid = "structure_asr.grid:main"
 asr-examples = "structure_asr.benchmark_examples:main"
+forward-asr = "structure_asr.simulation.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-runpod_exact_mlm_smoke = ["*.fasta", "*.nwk"]
+"structure_asr.smoke" = ["*.fasta", "*.nwk"]
+
+[tool.pytest.ini_options]
+# The suite is plain unittest; pytest can run it too.
+testpaths = ["tests"]
+pythonpath = ["src"]

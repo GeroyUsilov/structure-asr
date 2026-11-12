@@ -15,9 +15,9 @@ from pathlib import Path
 import numpy as np
 from Bio import SeqIO
 
-from forward_asr_benchmark.cli import simulate
-from forward_asr_benchmark.io import read_fasta, write_fasta
-from forward_asr_benchmark.tree import load_tree
+from structure_asr.simulation.cli import simulate
+from structure_asr.simulation.io import read_fasta, write_fasta
+from structure_asr.simulation.tree import load_tree
 
 
 ALPHABET = frozenset("ACDEFGHIKLMNPQRSTVWY")

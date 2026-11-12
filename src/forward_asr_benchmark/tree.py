@@ -1,36 +1,10 @@
-"""Tree loading and deterministic internal-node naming."""
+"""Compatibility alias; maintained implementation: ``structure_asr.simulation.tree``.
 
-from __future__ import annotations
+Importing this module returns ``structure_asr.simulation.tree`` itself, so saved configs, factory
+strings and ``python -m forward_asr_benchmark.tree`` keep working.
+"""
+import sys
 
-from io import StringIO
-from pathlib import Path
+from structure_asr.simulation import tree as _impl
 
-from Bio import Phylo
-
-
-def load_tree(path: str | Path):
-    tree = Phylo.read(str(path), "newick")
-    seen: set[str] = set()
-    internal_counter = 0
-    for clade in tree.find_clades(order="preorder"):
-        if not clade.name:
-            if clade is tree.root:
-                clade.name = "Root"
-            else:
-                internal_counter += 1
-                clade.name = f"Internal_{internal_counter:04d}"
-        if clade.name in seen:
-            raise ValueError(f"duplicate tree node name: {clade.name!r}")
-        seen.add(clade.name)
-        if clade is not tree.root and clade.branch_length is None:
-            raise ValueError(f"branch leading to {clade.name!r} has no length")
-        if clade.branch_length is not None and clade.branch_length < 0:
-            raise ValueError(f"branch leading to {clade.name!r} has negative length")
-    return tree
-
-
-def tree_to_newick(tree) -> str:
-    handle = StringIO()
-    Phylo.write(tree, handle, "newick")
-    return handle.getvalue().strip()
-
+sys.modules[__name__] = _impl

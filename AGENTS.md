@@ -33,7 +33,9 @@ before changing an algorithm or a workflow. `docs/archive/` is history.
    and `.cache/`. Never modify the Desktop originals.
 8. Long jobs must checkpoint and resume, validate inputs without loading GPU
    models (`--validate-only`), and show progress. Test resume when touching them.
-9. Keep the old `runpod_*` import paths and config factories working until the
+9. All code lives in `structure_asr`; `forward_asr_benchmark` and `runpod_*`
+   are thin alias shims (VALIDATION "0.3.0 package consolidation"). Keep the
+   old `runpod_*` import paths and config factories working until the
    user retires them.
 10. Before committing, run `bash scripts/check.sh` (tests + CPU example replay;
     `--quick` for tests only).

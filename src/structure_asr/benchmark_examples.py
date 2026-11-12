@@ -13,7 +13,7 @@ from pathlib import Path
 
 from Bio import Phylo
 
-from forward_asr_benchmark.tree import load_tree
+from structure_asr.simulation.tree import load_tree
 from structure_asr.evaluation import read_fasta, score_dataset, topology_mapping, write_tsv
 
 SITE_COLUMNS = [

@@ -19,14 +19,14 @@ from typing import Callable, Sequence
 
 import numpy as np
 
-from forward_asr_benchmark.evolve import (
+from structure_asr.simulation.evolve import (
     EvolutionResult,
     ForwardSimulator,
     MaskedSiteConditionalProposal,
     MutationEvent,
 )
-from forward_asr_benchmark.scoring import CompositeScorer, ConstantScorer, ScoreResult
-from forward_asr_benchmark.tree import tree_to_newick
+from structure_asr.simulation.scoring import CompositeScorer, ConstantScorer, ScoreResult
+from structure_asr.simulation.tree import tree_to_newick
 from structure_asr.fold_conservation import FoldFilter, FoldSettings
 
 BatchPredictor = Callable[[list[str], list[int]], np.ndarray]

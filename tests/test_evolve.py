@@ -4,15 +4,15 @@ import unittest
 import numpy as np
 from Bio import Phylo
 
-from forward_asr_benchmark.dca import DcaModel
-from forward_asr_benchmark.evolve import (
+from structure_asr.simulation.dca import DcaModel
+from structure_asr.simulation.evolve import (
     DcaConditionalProposal,
     ForwardSimulator,
     MaskedSiteConditionalProposal,
     ProfileConditionalProposal,
     SimulationSettings,
 )
-from forward_asr_benchmark.scoring import (
+from structure_asr.simulation.scoring import (
     CachedProfilePredictor,
     ConstantScorer,
     DcaScorer,

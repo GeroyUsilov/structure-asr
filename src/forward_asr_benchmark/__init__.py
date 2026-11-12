@@ -1,33 +1,8 @@
-"""Forward protein evolution with complete ancestral ground truth."""
+"""Compatibility package; maintained implementation: ``structure_asr.simulation``.
 
-from .dca import DcaModel
-from .evolve import (
-    EvolutionResult,
-    ForwardSimulator,
-    MaskedSiteConditionalProposal,
-    ProfileConditionalProposal,
-    SimulationSettings,
-)
-from .scoring import (
-    AlphaFoldUncertaintyScorer,
-    CompositeScorer,
-    ConstantScorer,
-    DcaScorer,
-    PseudoPerplexityScorer,
-    ScoreResult,
-)
-
-__all__ = [
-    "AlphaFoldUncertaintyScorer",
-    "CompositeScorer",
-    "ConstantScorer",
-    "DcaModel",
-    "DcaScorer",
-    "EvolutionResult",
-    "ForwardSimulator",
-    "MaskedSiteConditionalProposal",
-    "ProfileConditionalProposal",
-    "PseudoPerplexityScorer",
-    "ScoreResult",
-    "SimulationSettings",
-]
+The forward-evolution engine now lives inside ``structure_asr``. This package
+keeps ``import forward_asr_benchmark`` and its submodules working for saved
+configs and older scripts.
+"""
+from structure_asr.simulation import *  # noqa: F401,F403
+from structure_asr.simulation import __all__  # noqa: F401

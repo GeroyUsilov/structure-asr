@@ -33,8 +33,8 @@ from pathlib import Path
 
 from Bio import Phylo
 
-from forward_asr_benchmark.io import read_fasta, write_fasta, write_run
-from forward_asr_benchmark.tree import load_tree
+from structure_asr.simulation.io import read_fasta, write_fasta, write_run
+from structure_asr.simulation.tree import load_tree
 from structure_asr import iqtree, sampling
 from structure_asr.batched_forward import (
     Cell,

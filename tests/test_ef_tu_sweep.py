@@ -8,19 +8,19 @@ import unittest
 import numpy as np
 from Bio import Phylo
 
-from forward_asr_benchmark.evolve import (
+from structure_asr.simulation.evolve import (
     ForwardSimulator,
     SimulationSettings,
     UniformSubstitutionProposal,
 )
-from forward_asr_benchmark.scoring import ConstantScorer
-from runpod_exact_mlm_ef_tu_sweep.analyze_3di_hamming import hamming_matrices
-from runpod_exact_mlm_ef_tu_sweep.convert_tips_to_3di import (
+from structure_asr.simulation.scoring import ConstantScorer
+from structure_asr.analysis.hamming_3di import hamming_matrices
+from structure_asr.prostt5 import (
     balanced_chunk_slices,
     has_model_weights,
     load_checkpoint,
 )
-from runpod_exact_mlm_ef_tu_sweep.run_sweep import (
+from structure_asr.forward import (
     exact_planned_attempts,
     reconcile_timings_with_checkpoint,
     write_config,

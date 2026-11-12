@@ -14,12 +14,12 @@ from unittest.mock import patch
 import numpy as np
 from Bio import Phylo
 
-from forward_asr_benchmark.evolve import (
+from structure_asr.simulation.evolve import (
     ForwardSimulator,
     MaskedSiteConditionalProposal,
     SimulationSettings,
 )
-from forward_asr_benchmark.io import read_fasta, write_fasta
+from structure_asr.simulation.io import read_fasta, write_fasta
 from structure_asr import grid as grid_module
 from structure_asr import iqtree
 from structure_asr.fold_conservation import FoldFilter, FoldSettings, three_di_identity
@@ -48,7 +48,7 @@ def batched(sequences, sites):
 
 
 def tree():
-    from forward_asr_benchmark.tree import load_tree
+    from structure_asr.simulation.tree import load_tree
 
     handle = tempfile.NamedTemporaryFile("w", suffix=".nwk", delete=False)
     handle.write(NEWICK)
@@ -608,7 +608,7 @@ class EvaluationMapStateTests(unittest.TestCase):
 @unittest.skipUnless(os.environ.get("ASR_IQTREE"), "set ASR_IQTREE to run real IQ-TREE")
 class RealIqtreeTests(unittest.TestCase):
     def test_real_aa_reconstruction_on_bundled_tips_maps_all_nodes(self):
-        from forward_asr_benchmark.tree import load_tree
+        from structure_asr.simulation.tree import load_tree
         from structure_asr.evaluation import read_state, topology_mapping
 
         reference = load_tree(ROOT / "examples/ef_tu/reference/AB_eftu_rerooted.tre")

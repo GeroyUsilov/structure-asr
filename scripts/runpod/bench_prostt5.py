@@ -15,7 +15,7 @@ import time
 
 import numpy as np
 
-from forward_asr_benchmark.io import read_fasta
+from structure_asr.simulation.io import read_fasta
 from structure_asr.prostt5 import load_prostt5
 from structure_asr.sampling import encode_sequences
 

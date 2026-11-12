@@ -49,7 +49,7 @@ python -m structure_asr.prostt5 --results-dir results/mu123_tau1p5 \
 For the historical μ=1 all-node truth cases:
 
 ```bash
-python -m runpod_exact_mlm_ef_tu_sweep.convert_ground_truth_nodes_to_3di \
+python -m structure_asr.analysis.encode_truth_nodes \
   --condition-input mu1_tau1p5=examples/ef_tu/mu1_tau1p5/truth_aa.fasta \
   --condition-input mu1_tau2=examples/ef_tu/mu1_tau2/truth_aa.fasta \
   --outdir results/truth_3di --resume
@@ -266,8 +266,8 @@ python examples/glugln/plot_glugln_sequence_logos.py
 
 The seven-rate τ=1 tip files are retained separately in
 `examples/ef_tu/rate_sweep_tau1`; historical general Hamming analysis entry
-points are `runpod_exact_mlm_ef_tu_sweep.analyze_aa_hamming` and
-`runpod_exact_mlm_ef_tu_sweep.analyze_3di_hamming` (see their `--help`).
+points are `structure_asr.analysis.hamming_aa` and
+`structure_asr.analysis.hamming_3di` (see their `--help`).
 
 ## Other sampling processes retained
 
@@ -280,5 +280,5 @@ points are `runpod_exact_mlm_ef_tu_sweep.analyze_aa_hamming` and
   and resume/import behavior. This is not joint phylogenetic MH.
 - `legacy/protein_mcmc_utils.py`, `legacy/greedy_utils.py`: original candidate
   scoring, forward-chain, mutational scan and greedy-selection helpers.
-- `runpod_paper_tree_ofs` plus core DCA/AlphaFold scorers: experimental historical
+- `structure_asr.ofs` (formerly `runpod_paper_tree_ofs`) plus core DCA/AlphaFold scorers: experimental historical
   options retained for reference, not active EF-Tu result provenance.
