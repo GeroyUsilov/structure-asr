@@ -27,12 +27,9 @@ Equations and conventions: [docs/METHODS.md](docs/METHODS.md).
 
 ## Status
 
-The effect of the 3Di term depends on the regime. Where the fold is conserved
-(τ = 0.5), it improves 3Di fidelity to the true ancestor in some ancestors.
-At μ = 2 with λ = 0.1 this comes without loss of AA identity; at higher λ or
-μ = 8 it trades some AA identity for structure. At μ = 4, and where the
-simulated fold is lost (τ ≥ 1.5, μ ≥ 2), it degrades AA fidelity. Per-run
-results are in [experiments/](experiments/).
+The 3Di term's effect is regime-dependent: it can improve structural fidelity
+while retaining AA identity, or trade AA identity for structure, and it degrades
+AA fidelity where the simulated fold is lost. See [experiments/](experiments/).
 
 ## Installation
 
