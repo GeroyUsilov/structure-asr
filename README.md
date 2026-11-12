@@ -27,9 +27,12 @@ Equations and conventions: [docs/METHODS.md](docs/METHODS.md).
 
 ## Status
 
-Adding the 3Di term (λ from 0.02 to 1) has not meaningfully improved AA recovery in any
-regime tested. In the fold-conserving regime (τ = 0.5) it improved 3Di fidelity
-in 4 of 9 ancestors. Per-run results are in [experiments/](experiments/).
+The effect of the 3Di term depends on the regime. Where the fold is conserved
+(τ = 0.5), it improves 3Di fidelity to the true ancestor in some ancestors.
+At μ = 2 with λ = 0.1 this comes without loss of AA identity; at higher λ or
+μ = 8 it trades some AA identity for structure. At μ = 4, and where the
+simulated fold is lost (τ ≥ 1.5, μ ≥ 2), it degrades AA fidelity. Per-run
+results are in [experiments/](experiments/).
 
 ## Installation
 
