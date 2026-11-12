@@ -25,29 +25,11 @@ ancestor in sequence (AA identity) and in structure (3Di identity).
 
 Equations and conventions: [docs/METHODS.md](docs/METHODS.md).
 
-## Findings
+## Status
 
-- **Baseline.** The historical μ=1, τ ∈ {1.5, 2} reconstructions reach ~97.9%
-  AA marginal-MAP accuracy.
-- **Fold loss at τ ≥ 1.5**
-  ([divergence](experiments/2026-11-02_divergence/NOTES.md)). Beyond μ ≈ 2,
-  many simulated tips are predicted disordered (17/39 at μ=4, τ=2). λ ≤ 0.1
-  changed AA errors by at most one site.
-- **Fold conserved at τ = 0.5**
-  ([tau-low](experiments/2026-11-02_tau-low/NOTES.md)). All tips stay folded
-  up to μ=8. 3Di reconstruction is more accurate than AA reconstruction at
-  μ ≥ 4 (91.2% vs 85.3% at μ=8). Low-τ lineages converge, which makes these
-  cells easier than their divergence suggests.
-- **λ scan at τ = 0.5**
-  ([tau-low-lambda](experiments/2026-11-02_tau-low-lambda/NOTES.md); λ ∈
-  {0, .02, .1, .5, 1}, μ ∈ {2, 4, 8}, three ancestors each).
-  - **AA recovery:** never improved. λ ≥ 0.5 made it worse (146 → 158 errors
-    at μ=4, λ=1). The chains do raise S_λ; about one in three moves fixes an
-    error.
-  - **3Di fidelity:** improved in 4 of 9 ancestors (μ=2 and μ=8). One case
-    was free (μ=2 Node1: 3Di 31 → 28, AA unchanged), one improved both (μ=8
-    Node29: AA 73 → 70, 3Di 24 → 23), and the rest traded AA for 3Di. μ=4
-    got worse on both.
+Adding the 3Di term (λ from 0.02 to 1) has not meaningfully improved AA recovery in any
+regime tested. In the fold-conserving regime (τ = 0.5) it improved 3Di fidelity
+in 4 of 9 ancestors. Per-run results are in [experiments/](experiments/).
 
 ## Installation
 
