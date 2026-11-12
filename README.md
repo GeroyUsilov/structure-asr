@@ -27,7 +27,9 @@ Equations and conventions: [docs/METHODS.md](docs/METHODS.md).
 
 ## Status
 
-The 3Di term's effect is regime-dependent: it can improve structural fidelity
+Results so far come from simulated evolution, where the true ancestors are
+known and reconstructions can be scored against them directly. The 3Di term's
+effect is regime-dependent: it can improve structural fidelity
 while retaining AA identity, or trade AA identity for structure, and it degrades
 AA fidelity where the simulated fold is lost. See [experiments/](experiments/).
 
