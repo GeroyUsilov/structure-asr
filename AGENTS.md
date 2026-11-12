@@ -20,8 +20,10 @@ before changing an algorithm or a workflow. `docs/archive/` is history.
 4. A change to numerical behavior, defaults or data needs a doc update
    (METHODS/WORKFLOWS/VALIDATION). A behavior-preserving refactor needs evidence:
    byte-identical fake-encoder outputs or an equivalence test.
-5. The endpoint is AA recovery against truth. Higher joint scores or better 3Di
-   identity are not improvements by themselves.
+5. Endpoints are fidelity to the true ancestor: AA recovery, and structural
+   fidelity (3Di of the reconstruction vs. the true ancestor's 3Di). A gain in
+   either is worth reporting; report both, and say when one trades against the
+   other. Higher joint scores S_λ are not improvements by themselves.
 
 ## Engineering rules
 

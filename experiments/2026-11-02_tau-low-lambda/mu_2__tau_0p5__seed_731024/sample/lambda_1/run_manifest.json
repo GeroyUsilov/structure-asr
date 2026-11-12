@@ -1,0 +1,49 @@
+{
+  "completed_steps": 1000,
+  "configuration": {
+    "aa_state_sha256": "33c02aa96f6368153815d0e24a44a7bb1f0f3a979c79f91665fd18d0dbe9d055",
+    "acceptance_mode": "metropolis_hastings",
+    "cell": "mu_2__tau_0p5__seed_731024",
+    "chains_per_node": 1,
+    "condition": "mu_2__tau_0p5__seed_731024__lambda_1",
+    "grid": "tau_low",
+    "max_chunk_aa": 500,
+    "mcmc_temperature": 2,
+    "model": "Rostlab/ProstT5",
+    "n_iter": 1000,
+    "n_muts": 1,
+    "nodes": [
+      "Node1",
+      "Node29",
+      "Node34"
+    ],
+    "probability_floor": 5e-06,
+    "seed": 731024,
+    "site_uncertainty": "gini: 1-sum_a p_i(a)^2",
+    "site_uncertainty_mixture": 0.9,
+    "site_weight_power": 1.0,
+    "start_mode": "aa_map",
+    "structural_lambda": 1.0,
+    "three_di_nodes": {
+      "Node1": "Node1",
+      "Node29": "Node29",
+      "Node34": "Node34"
+    },
+    "three_di_state_sha256": "03fbbccf190c6f77dbda5c0bd6d60b4132c5e6d89fdf641d9189cd15de2cf3c4"
+  },
+  "created_utc": "2026-11-02T22:45:24.683120+00:00",
+  "method": "uncertainty-weighted joint AA/3Di Metropolis-Hastings",
+  "objective": "log_P_AA(sequence) + structural_lambda*log_P_3Di(ProstT5(sequence))",
+  "outputs": {
+    "aa_map_start_3di": "aa_map_start_3di.fasta",
+    "aa_map_start_aa": "aa_map_start_aa.fasta",
+    "chain_summary": "chain_summary.tsv",
+    "primary_3di": "joint_asr_best_3di.fasta",
+    "primary_aa": "joint_asr_best_aa.fasta",
+    "trace": "trace.tsv"
+  },
+  "proposal": "fixed AA-Gini uncertainty site weights; non-self AA-posterior residue proposal",
+  "prostt5_method": "deterministic greedy <AA2fold>",
+  "resolved_model_path": "/workspace/hf/hub/models--Rostlab--ProstT5/snapshots/d7d097d5bf9a993ab8f68488b4681d6ca70db9e5",
+  "status": "complete"
+}

@@ -33,7 +33,7 @@ Then fill in `NOTES.md`:
 ## Findings
 
 What the summaries show, with the numbers. Keep the claims within what was
-measured: AA recovery versus truth is the endpoint, and score gains alone don't count.
+measured: fidelity to the true ancestor (AA recovery and 3Di structural fidelity) is the endpoint, and score gains alone don't count.
 ```
 
 Historical (pre-repository) runs are described in `docs/EXPERIMENTS.md` and the

@@ -167,8 +167,16 @@ Generated configs deliberately keep writing the old factory strings
 forward-checkpoint fingerprint, so changing them would block resuming existing
 checkpoints. No function bodies changed, apart from import lines.
 
-Verification status: the move was committed without re-running
-`scripts/check.sh` or the equivalence comparison. Before merging to `main`, run
-the check and confirm that fake-encoder grid outputs and the CPU replay are
-byte-identical to 0.2.0. Run-to-run timestamps in manifests and timing tables
-are expected to differ.
+Equivalence evidence (rule 4), comparing 0.2.0 (`73942b6`) with this
+refactor:
+
+- `scripts/check.sh` passes: 55 tests (1 skipped), plus the example replay.
+- A fake-model run produced 240 files: a grid through forward, fake-encoder 3Di,
+  stub IQ-TREE ASR, joint sampling over λ ∈ {0, .5} and evaluation; the
+  standalone sampler; and the `forward-asr simulate` CLI with uniform and
+  exact-MLM proposals, launched through the old `python -m
+  forward_asr_benchmark.cli` path. 220 files are byte-identical. The other 20
+  differ only in `created_utc` or timing columns. These are the same 20 files
+  that differ between two runs of unchanged 0.2.0 code.
+- CPU replay: every TSV and PNG is byte-identical. The 8 PDF/SVG files differ
+  only in their embedded creation date.

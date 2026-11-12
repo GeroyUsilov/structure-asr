@@ -8,9 +8,12 @@
 - `forward_asr_benchmark` and the `runpod_*` packages are now alias shims.
   Old imports, `python -m` paths and saved config factory strings still work.
 - Added `environment.yml` (conda, CPU), this changelog, and pytest settings.
-  Rewrote the README as a guided introduction.
-- No algorithm, default or output format changed. The verification steps that
-  remain are listed in `docs/VALIDATION.md` ("0.3.0 package consolidation").
+  Rewrote the README around the scientific method and current findings.
+- Endpoints now explicitly include structural fidelity to the true ancestor
+  (3Di), alongside AA recovery (AGENTS.md rule 5, experiments/README.md).
+- Committed the `2026-11-02_tau-low-lambda` experiment record.
+- No algorithm, default or output format changed. Equivalence was checked against
+  0.2.0 (byte-identical outputs; see `docs/VALIDATION.md`, "0.3.0 package consolidation").
 
 ## 0.2.0 and earlier
 

@@ -1,207 +1,236 @@
 # structure-asr
 
 **Structure-informed ancestral sequence reconstruction.** This project asks
-whether knowing a protein's 3D structure helps us infer what its ancestors
-looked like.
+whether a protein family's structure can improve inference of its ancestors.
+The aim is ancestors that are right in sequence and, just as importantly,
+right in fold.
 
-This README walks through the idea, how the pieces fit together, and how to
-run them. You don't need a GPU to explore it: the tests and a full replay of
-the bundled examples run on a laptop.
+This README explains the scientific question, the approach, and what has been
+found so far. How to run the code comes at the end, and the exact equations
+are in [docs/METHODS.md](docs/METHODS.md).
 
 ---
 
-## The idea, in brief
+## The question
 
-**Ancestral sequence reconstruction (ASR)** starts from present-day protein
-sequences and a phylogenetic tree that relates them. It works backwards to
-estimate the sequences at the tree's internal nodes, the ancestors. Standard
-tools such as IQ-TREE give, for every ancestral site, a probability for each
-of the 20 amino acids (a *posterior*).
+**Ancestral sequence reconstruction (ASR)** infers the sequences of extinct
+proteins from present-day relatives and the phylogeny that connects them.
+Standard maximum-likelihood ASR fits a substitution model along the tree. For
+every ancestral site it reports a posterior probability for each of the 20
+amino acids.
 
-Those posteriors treat each site independently. Real proteins don't evolve
-that way: residues have to keep working together to hold a fold. So we ask
-whether adding a structural signal improves the reconstruction.
+Those models treat sites as evolving independently. Real proteins are held
+together by a fold, and selection to keep that fold couples residues across
+the sequence. A reconstruction can be accurate site by site and still
+assemble into a sequence whose structure doesn't match the real ancestor.
 
-The structural signal comes from **3Di**, a 20-letter "structural alphabet"
-(from Foldseek) that describes each residue's local 3D environment. The
-**ProstT5** language model translates an amino-acid sequence into a predicted
-3Di sequence, which lets us score how well a candidate ancestor matches the
-reconstructed ancestral *structure*.
+Structure is usually far more conserved than sequence, so it may carry
+information that sequence-only ASR misses. We encode structure with **3Di**, a
+20-letter structural alphabet (introduced by Foldseek) that describes each
+residue's local tertiary contacts. 3Di sequences can be aligned, modeled and
+reconstructed on a tree like amino acids. The **ProstT5** protein language
+model translates amino-acid sequences into predicted 3Di.
 
-Real ancestors are unknown, so we can't score real reconstructions. Instead:
+So we ask: **when 3Di is reconstructed alongside amino acids and used to guide
+the choice of ancestor, do we recover ancestors that are closer to the truth,
+in sequence (AA identity) and in structure (3Di identity to the true ancestor)?**
 
-1. **Simulate evolution** down a real tree (EF-Tu, 39 tips). The **ESM2**
-   protein language model proposes mutations, so the sequences stay
-   protein-like. Every ancestral sequence is saved, so the true answer is
-   known.
-2. **Reconstruct** the ancestors from the simulated tips alone, as one would
-   with real data. This is done for both amino acids and 3Di.
-3. **Sample** candidate ancestors that balance amino-acid evidence against
-   structural evidence. A weight **λ** controls how much structure counts.
-4. **Evaluate**: compare against the saved truth. *The only measure of success
-   is amino-acid recovery.* A higher model score or better 3Di agreement does
-   not count as an improvement on its own.
+## Approach
 
-Truth files are read only in step 4, never during inference or tuning.
+### 1. A benchmark where the true ancestors are known
 
-## How the pipeline fits together
+Real ancestors are never observed, so we simulate evolution and keep every
+ancestor.
 
-```
- tree + root sequence
-        │
-        ▼
- ┌──────────────┐   ESM2 (GPU)        asr-evolve / asr-grid forward
- │ 1. simulate  │──────────────────▶  tips + every ancestor (ground truth)
- └──────────────┘
-        │ tips only
-        ▼
- ┌──────────────┐   ProstT5 (GPU)     asr-encode / asr-grid encode
- │ 2. encode    │──────────────────▶  3Di versions of the sequences
- └──────────────┘
-        ▼
- ┌──────────────┐   IQ-TREE (CPU)     asr-grid asr
- │ 3. reconstruct│─────────────────▶  AA and 3Di posteriors per ancestor
- └──────────────┘
-        ▼
- ┌──────────────┐   ProstT5 (GPU)     asr-sample / asr-grid sample
- │ 4. sample    │──────────────────▶  ancestors scored by AA + λ·3Di
- └──────────────┘
-        ▼
- ┌──────────────┐   CPU               asr-grid evaluate / asr-examples
- │ 5. evaluate  │──────────────────▶  accuracy vs. truth, tables, figures
- └──────────────┘
-```
+- **Tree and root.** The real EF-Tu phylogeny (39 tips, 77 nodes including
+  the root) with its supplied rooting and branch lengths. The root is one
+  natural EF-Tu sequence, 396 residues long.
+- **Mutation process.** Along each branch, sites are chosen uniformly at
+  random. Each chosen site is masked, and a new residue is drawn from the
+  **ESM2** masked-language-model conditional, sharpened or flattened by a
+  temperature **τ**. The number of attempts per branch is μ × L × branch
+  length, so **μ** controls divergence.
+- **Output.** Tips, all 38 internal ancestors, and every mutation event.
 
-A **grid** (`asr-grid`, configured by a TOML file in `grids/`) runs all five
-stages across many settings at once. The settings are the mutation rate **μ**,
-the simulation temperature **τ**, the random seed and the structural weight
-**λ**. Each stage checkpoints and can resume.
+ESM2 keeps sequences protein-like, but it applies no explicit selection for a
+fold. That makes τ a key setting. At τ ≥ 1.5, lineages past μ ≈ 2 drift out
+of foldable space. At τ = 0.5 the fold is conserved, but lineages converge on
+the same preferred residues. That convergence makes those cells easier to
+reconstruct than their divergence suggests (see Findings).
 
-## Getting started (CPU, no model downloads)
+### 2. Two independent reconstructions: sequence and structure
 
-Python 3.11 or newer is required.
+Only the simulated tips are passed to inference; the truth is set aside.
+
+- **Amino-acid ASR.** IQ-TREE on the known topology. ModelFinder selects the
+  substitution model, and IQ-TREE re-estimates the branch lengths and writes
+  marginal posteriors per ancestral site.
+- **3Di ASR.** The tips are translated to 3Di with ProstT5. IQ-TREE then
+  reconstructs them with the published **Q.3Di.AF** exchangeability matrix
+  (Garg & Hochberg 2025).
+
+The AA and 3Di trees are reconstructed separately, so their node labels need
+not agree. Ancestors are paired across trees, and with the truth, **by
+topology** (the tips below each node), never by node name.
+
+Using the true topology is a known-tree assumption that favors reconstruction
+relative to real-world practice.
+
+### 3. Combining the two: structure-guided sampling
+
+For a candidate ancestor *x* we score
+
+> S_λ(x) = ℓ_AA(x) + λ · ℓ_3Di(ProstT5(x))
+
+ℓ_AA is the log-probability of *x* under the AA posteriors. ℓ_3Di is the
+log-probability of *x*'s predicted structure under the reconstructed 3Di
+posteriors. **λ** sets how much the structural evidence counts.
+
+A Metropolis–Hastings sampler explores this target. It starts from the AA
+marginal-MAP reconstruction (the standard ASR answer). It proposes changes
+preferentially at uncertain sites, drawing residues from the AA posterior. It
+reports the highest-scoring sequence visited. λ = 0 is the sequence-only
+control.
+
+### 4. Evaluation against the hidden truth
+
+Evaluation is a separate stage, run after inference. It is the only code that
+reads the true ancestors. No λ, threshold or node choice is tuned on it.
+Two kinds of fidelity are measured:
+
+- **Sequence fidelity:** AA identity to the true ancestor.
+- **Structural fidelity:** 3Di identity between the reconstruction's
+  predicted structure and the true ancestor's.
+
+A gain in either is meaningful. A higher model score S_λ is not, by itself:
+the sampler can raise its own objective while moving away from the truth.
+
+## Findings so far
+
+Full numbers and caveats are in each `experiments/*/NOTES.md` and in
+[docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+
+**Historical cases reproduce.** The stored μ=1, τ ∈ {1.5, 2} reconstructions
+reach about 97.9% AA marginal-MAP accuracy.
+
+**At τ ≥ 1.5, simulated proteins lose their fold beyond μ ≈ 2**
+([divergence](experiments/2026-11-02_divergence/NOTES.md)). By μ=4, τ=2,
+ProstT5 reads 17 of 39 tips as almost entirely disordered. In that regime a
+λ of 0.1 or less gave no meaningful AA improvement: the best was one site, in
+a cell whose tips had largely lost their fold. The objective ranked the AA-MAP
+reconstruction above the true ancestor, so the sampler staying put was the
+correct behavior for that objective.
+
+**At τ = 0.5 the fold is conserved, and 3Di reconstruction beats AA
+reconstruction** ([tau-low](experiments/2026-11-02_tau-low/NOTES.md)). Every
+tip stays folded up to μ=8. At μ ≥ 4 the direct 3Di reconstruction is the
+more accurate of the two: 91.2% vs 85.3% at μ=8, and one node has 19 3Di
+errors against 73 AA errors. This is the first regime where the structural
+channel clearly holds information the sequence channel lacks. One caveat:
+low-τ lineages converge, so these cells are easier than their divergence
+implies.
+
+**New: a full λ scan in the fold-conserving regime**
+([tau-low-lambda](experiments/2026-11-02_tau-low-lambda/NOTES.md)). The scan
+covered λ ∈ {0, .02, .1, .5, 1} at μ ∈ {2, 4, 8}, τ = 0.5, on three ancestors
+each.
+
+- *Sequence fidelity did not improve at any λ.* Small λ leaves the AA-MAP
+  start unchanged. λ ≥ 0.5 makes it worse (e.g. 146 → 158 summed errors at
+  μ=4, λ=1). This is not a mixing failure: at λ ≥ 0.5 the chains raise S_λ by
+  tens of nats and move up to 21 of 396 residues. About a third of those moves
+  correct an error; two thirds break a correct residue.
+- *Structural fidelity did improve in 4 of 9 ancestors,* at μ=2 and μ=8. The
+  structural term pulls reconstructions toward the true ancestor's fold. In
+  one case this came free (μ=2 Node1: 3Di errors 31 → 28, AA unchanged). In
+  another, both improved (μ=8 Node29 at λ=0.5: AA 73 → 70, 3Di 24 → 23).
+  Elsewhere it traded AA accuracy for structural accuracy. μ=4 got worse on
+  both.
+- *Interpretation.* The structural signal is real but uneven: it helps at
+  some sites and hurts at others. ProstT5 maps many sequences to the same
+  structure, so "closer to the true fold" can be satisfied by residues that
+  are structurally right but chemically wrong. One global λ cannot tell these
+  apart, and scanning λ further on this additive objective is unlikely to
+  help.
+
+**Next question.** Instead of one global λ, weight the structural term at each
+site by how confident the 3Di reconstruction is there. At μ=8 the 3Di MAP is
+right at 87% of the sites where the AA MAP is wrong, with mean confidence 0.98.
+Whether that confidence is calibrated at the sites that matter is untested.
+
+---
+
+## Using the code
+
+### On a laptop (CPU, no model downloads)
+
+Python 3.11+.
 
 ```bash
 python -m venv .venv
-.venv/bin/python -m pip install -e '.[analysis]'
-bash scripts/check.sh            # tests + replay of the bundled examples
+.venv/bin/python -m pip install -e '.[analysis]'     # or: conda env create -f environment.yml
+bash scripts/check.sh            # tests + replay of the bundled examples (~20 s)
 bash scripts/check.sh --quick    # tests only
 ```
 
-You can use conda instead: `conda env create -f environment.yml`.
+The tests use small deterministic stand-ins for ESM2 and ProstT5. The replay
+rebuilds the published tables and figures under `results/` from bundled
+inputs.
 
-The tests use small deterministic stand-ins for ESM2 and ProstT5, so nothing
-large is downloaded. The replay rebuilds the published tables and figures
-under `results/` from saved inputs.
+### On GPUs (RunPod)
 
-If NumPy, Biopython, tqdm, pandas and matplotlib are already installed, this
-avoids any download:
+ESM2 and ProstT5 run on RunPod. A **grid** (a TOML file in `grids/`) runs the
+whole pipeline over many (μ, τ, seed, λ) settings. Every stage checkpoints and
+can resume:
 
-```bash
-python -m venv --system-site-packages .venv
-.venv/bin/python -m pip install --no-deps --no-build-isolation -e .
-```
-
-## Running the GPU stages
-
-ESM2 and ProstT5 run on [RunPod](https://www.runpod.io/), not locally. The
-fleet launcher starts one self-contained pod per shard of a grid. It ships the
-committed code and records the commit in `grid_plan.json`:
+| Stage | Hardware | Command |
+|---|---|---|
+| Simulate | GPU (ESM2) | `asr-grid forward` |
+| Encode to 3Di | GPU (ProstT5) | `asr-grid encode` |
+| Reconstruct AA + 3Di | CPU (IQ-TREE) | `asr-grid asr` |
+| Structure-guided sampling | GPU (ProstT5) | `asr-grid sample` |
+| Evaluate against truth | CPU | `asr-grid evaluate` |
 
 ```bash
-bash scripts/grid.sh plan grids/example.toml      # what would run, no GPU needed
-bash scripts/grid.sh status grids/example.toml    # progress of an existing run
+bash scripts/grid.sh plan grids/example.toml      # preview, no GPU needed
 python scripts/runpod/fleet.py --help             # launch / sync / stop pods
 ```
 
-For a manual pod with a CUDA PyTorch image:
+`fleet.py` gives each pod the committed code and records the commit in
+`grid_plan.json`. Finished runs get a small committed record under
+`experiments/` (`scripts/record_run.sh`). The full command reference, including
+manual pods, is [docs/WORKFLOWS.md](docs/WORKFLOWS.md).
 
-```bash
-git clone https://github.com/GeroyUsilov/structure-asr.git && cd structure-asr
-git checkout <commit-or-branch>
-python -m pip install -r requirements-gpu.txt
-python -m pip install -e '.[analysis]'
-```
-
-Most long commands accept `--validate-only` or `--plan-only` to check inputs
-without loading a model, for example:
-
-```bash
-bash scripts/forward_ef_tu.sh --outdir results/mu123_tau2 \
-  --rates 1 2 3 --proposal-temperature 2 --plan-only
-bash scripts/sample_node34.sh 0.02 --validate-only
-```
-
-The full command reference is in [docs/WORKFLOWS.md](docs/WORKFLOWS.md).
-
-## Repository layout
+### Repository layout
 
 ```
-structure-asr/
-├── src/structure_asr/        the Python package (everything importable lives here)
-│   ├── simulation/           forward-evolution engine: tree walk, mutation kernels,
-│   │                         scorers, checkpoints, FASTA I/O  (CLI: forward-asr)
-│   ├── forward.py, esm2.py   EF-Tu forward runs with exact masked-site ESM2
-│   ├── batched_forward.py    many simulations at once on one GPU
-│   ├── fold_conservation.py  optional structural selection during simulation
-│   ├── prostt5.py            amino acids → 3Di
-│   ├── iqtree.py             fixed-topology IQ-TREE ASR
-│   ├── posteriors.py         reading posteriors, sequence scores
-│   ├── sampling.py           structure-guided sampler (current)
-│   ├── legacy_sampling.py    historical sampler, kept for reproducibility
-│   ├── evaluation.py         match nodes by topology, score against truth
-│   ├── score_placement.py    where the truth falls in score distributions
-│   ├── grid.py               the multi-setting grid driver (asr-grid)
-│   ├── benchmark_examples.py, example_distances.py   CPU replay of examples
-│   ├── analysis/             historical EF-Tu sweep analyses (Hamming ECDFs)
-│   ├── ofs/                  experimental paper-tree OFS sweep
-│   └── smoke/                GPU smoke test for the ESM2 generator
-├── tests/                    CPU test suite with deterministic fakes
-├── grids/                    grid definitions (TOML)
-├── examples/                 bundled input data, read-only (EF-Tu, Glu/Gln)
-├── experiments/              small committed records of real runs
-├── scripts/                  stage wrappers, check.sh, record_run.sh, runpod/
-├── docs/                     methods, workflows, validation; archive/ = history
-├── legacy/                   earlier implementations, kept as references
-├── environment.yml           conda environment (CPU)
-└── requirements-gpu.txt      extra pins for GPU pods
+src/structure_asr/       the Python package
+  simulation/            forward-evolution engine (tree walk, kernels, scorers, checkpoints)
+  forward.py, esm2.py    ESM2-driven simulation;  batched_forward.py, fold_conservation.py
+  prostt5.py             amino acids → 3Di
+  iqtree.py              fixed-topology AA and 3Di ASR
+  posteriors.py          posterior parsing and sequence scores
+  sampling.py            structure-guided MH sampler (legacy_sampling.py: historical)
+  evaluation.py          topology matching and fidelity vs. truth
+  grid.py                multi-setting pipeline driver (asr-grid)
+  analysis/, ofs/, smoke/   historical analyses, experimental OFS sweep, GPU smoke test
+tests/                   CPU tests with deterministic fakes
+grids/                   grid definitions (TOML)
+examples/                bundled input data, read-only (EF-Tu, Glu/Gln)
+experiments/             committed records of each real run
+scripts/                 stage wrappers, check.sh, record_run.sh, runpod/
+docs/                    METHODS, WORKFLOWS, VALIDATION, EXPERIMENTS; archive/
+legacy/                  earlier implementations, kept for reference
 ```
 
-`results/` and `.cache/` are created as you work and are not tracked by git.
+Older import paths (`forward_asr_benchmark`, `runpod_*`) still work and point
+into `structure_asr`.
 
-Some older import paths still work: `forward_asr_benchmark` and the
-`runpod_*` packages now just point into `structure_asr`. Saved configurations
-and older scripts keep running. Please use the `structure_asr` names in new
-code.
+### Further reading
 
-## What we have found so far
-
-- **The historical cases reproduce.** The stored μ=1, τ∈{1.5, 2} EF-Tu
-  reconstructions reach about 97.9% amino-acid marginal-MAP accuracy.
-- **A better structural score is not a better ancestor.** Across six historical
-  representative reconstructions, joint scores improved while AA errors rose
-  from 68 to 75.
-- **The structural weight λ has not helped yet.** In the divergence grid no λ
-  beat the λ=0 control. Past μ≈2 at τ≥1.5 the simulated proteins lose
-  their fold (ProstT5 reads them as disordered). See
-  `experiments/2026-11-02_divergence/`.
-- **Lower simulation temperature keeps the fold.** At τ=0.5 every tip stays
-  folded up to μ=8. See `experiments/2026-11-02_tau-low/`.
-
-[docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) and each `experiments/*/NOTES.md`
-have the numbers and caveats.
-
-## Further reading
-
-| Document | What's in it |
-|---|---|
-| [docs/METHODS.md](docs/METHODS.md) | Exact algorithms, equations and conventions |
-| [docs/WORKFLOWS.md](docs/WORKFLOWS.md) | Every command, RunPod setup, output layout |
-| [docs/VALIDATION.md](docs/VALIDATION.md) | What is tested and the known limitations |
-| [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) | Historical experiments and observations |
-| [experiments/README.md](experiments/README.md) | How run records are made |
-| [AGENTS.md](AGENTS.md) | Working rules for contributors (scientific and git) |
-| [CHANGELOG.md](CHANGELOG.md) | What changed between versions |
-
-Original-file provenance and handoff notes are in
-[docs/archive/](docs/archive/).
+- [docs/METHODS.md](docs/METHODS.md): exact algorithms, equations and conventions
+- [docs/WORKFLOWS.md](docs/WORKFLOWS.md): commands, RunPod, output layout
+- [docs/VALIDATION.md](docs/VALIDATION.md): what is tested; known limitations
+- [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md): historical experiments
+- [AGENTS.md](AGENTS.md): working rules (scientific and git)
+- [CHANGELOG.md](CHANGELOG.md)
