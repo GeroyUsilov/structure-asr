@@ -48,8 +48,6 @@ Equations and conventions: [docs/METHODS.md](docs/METHODS.md).
     was free (μ=2 Node1: 3Di 31 → 28, AA unchanged), one improved both (μ=8
     Node29: AA 73 → 70, 3Di 24 → 23), and the rest traded AA for 3Di. μ=4
     got worse on both.
-- **Open question.** Can a per-site, confidence-weighted structural term
-  replace the single global λ?
 
 ## Installation
 
